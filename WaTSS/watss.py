@@ -13,10 +13,12 @@ degrees C and also reports English (degrees F) values.
 import bisect
 import calendar
 import csv
+import io
 import math
 import random
 import re
 import time
+import zipfile
 
 HOUR = 3_600_000
 DAY = 86_400_000
@@ -356,6 +358,181 @@ def export_name(source_name, filt, averaging, window):
     tag = {"daily": "DailyAve", "weekly": "WeeklyAve", "monthly": "MonthlyAve",
            "running": f"Running{int(window)}"}.get(averaging, "")
     return f"{base}{'DailyMax' if filt == 'max' else ''}{tag}.txt"
+
+
+# ---------------------------------------------------------------- R / ggplot2 export
+
+GGPLOTGUI_URL = "https://shiny.gmw.rug.nl/ggplotgui/"
+WATSS_URL = "https://chrisbuerginrogers.github.io/Kevin/WaTSS/"
+R_COLOURS = {"raw": "#1f6fd1", "filtered": "#138a55", "left": "#c99a00", "right": "#e46a00"}
+
+
+def iso_timestamp(t):
+    """ms -> '2013-06-02 12:00:00' (what R's as.POSIXct reads by default)."""
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(t / 1000))
+
+
+def filter_label(filt, averaging, window):
+    """Human description of the two dropdowns, e.g. 'Daily Max, Running Average (7 days)'."""
+    parts = ["Daily Max"] if filt == "max" else []
+    if averaging == "running":
+        parts.append(f"Running Average ({int(window)} {'days' if filt == 'max' else 'points'})")
+    elif averaging in ("daily", "weekly", "monthly"):
+        parts.append(averaging.capitalize() + " Average")
+    return ", ".join(parts) or "Raw Data"
+
+
+def segments(t, dt):
+    """Number the unbroken runs of a series (1, 1, 1, 2, 2, ...). A new run starts
+    wherever the gap exceeds six typical intervals, where the WaTSS plots break the line."""
+    gap = max(dt, typical_interval(t)) * 6
+    out, k = [], 1
+    for i, ti in enumerate(t):
+        if i and ti - t[i - 1] > gap:
+            k += 1
+        out.append(k)
+    return out
+
+
+def r_data_csv(t, y, low_t, low_y, dt):
+    """Raw and filtered series in one tidy (long) table for R and ggplotgui."""
+    t0 = t[0] if t else 0
+    lines = ["series,datetime,month,days,segment,temp"]
+    for name, ts, ys in (("Raw", t, y), ("Filtered", low_t, low_y)):
+        for ti, yi, seg in zip(ts, ys, segments(ts, dt)):
+            lines.append(f"{name},{iso_timestamp(ti)},{iso_timestamp(ti)[:7]},"
+                         f"{(ti - t0) / DAY:.4f},{seg},{round(yi, 4)!r}")
+    return "\n".join(lines) + "\n"
+
+
+def file_base(source_name):
+    """'Jewell Lake Oct2022.csv' -> 'Jewell_Lake_Oct2022' (safe for file names and R strings)."""
+    base = re.sub(r"\.[^.]+$", "", source_name)
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", base).strip("_") or "watss"
+
+
+def _r_str(s):
+    """A single-quoted R string, ASCII only (so the script reads the same on any locale)."""
+    s = s.replace("\\", "\\\\").replace("'", "\\'")
+    return "'" + "".join(c if ord(c) < 128 else f"\\u{ord(c):04X}" for c in s) + "'"
+
+
+def _r_time(t):
+    return f"as.POSIXct({_r_str(iso_timestamp(t))}, tz = 'UTC')"
+
+
+def _r_num(v):
+    return f"{v:.6g}"
+
+
+def r_script(source_name, unit, filt, averaging, window, t_left, t_right,
+             xlim=None, raw_ylim=None, low_ylim=None, n_filtered=0, today=None):
+    """ggplot2 code that redraws the two WaTSS plots from r_data_csv(), laid out the
+    way ggplotgui (https://shiny.gmw.rug.nl/ggplotgui/) writes its R code.
+
+    xlim is the zoomed time range (ms) or None; raw_ylim / low_ylim are (lo, hi) or None.
+    """
+    base = file_base(source_name)
+    csv_name = base + "_watss.csv"
+    label = filter_label(filt, averaging, window)
+    deg = "degrees " + unit
+    ylab = _r_str(f"Temperature (°{unit})")
+    today = today or time.strftime("%Y-%m-%d")
+
+    def coord(ylim):
+        parts = []
+        if xlim:
+            parts.append("xlim = zoom")
+        if ylim:
+            parts.append(f"ylim = c({_r_num(ylim[0])}, {_r_num(ylim[1])})")
+        return [f"coord_cartesian({', '.join(parts)})"] if parts else []
+
+    def graph(name, data, colour, extra):
+        layers = [f"ggplot({data}, aes(x = datetime, y = temp, group = segment))",
+                  f"geom_line(colour = '{colour}')"] + extra
+        return f"{name} <- " + " +\n  ".join(layers) + f"\n{name}\n"
+
+    raw_layers = coord(raw_ylim) + [f"labs(x = 'Date', y = {ylab})", "ggtitle('Raw temperature')", "theme_bw()"]
+    low_layers = ([f"geom_point(colour = '{R_COLOURS['filtered']}')"] if n_filtered < 80 else []) + [
+        f"geom_vline(xintercept = period, colour = c('{R_COLOURS['left']}', '{R_COLOURS['right']}'), linetype = 'dashed')",
+    ] + coord(low_ylim) + [
+        f"labs(x = 'Date', y = {ylab})",
+        f"ggtitle({_r_str('Filtered temperature: ' + label)})",
+        "theme_bw()",
+    ]
+
+    out = [
+        f"## WaTSS plots for {source_name}",
+        f"## Made with WaTSS ({WATSS_URL}) on {today}.",
+        f"## The code is laid out like ggplotgui's ({GGPLOTGUI_URL}), so you can",
+        "## edit it the same way: add layers with +, change the theme, labels and colours.",
+        "##",
+        f"## Keep {csv_name} in the same folder as this script and make that folder",
+        "## your working directory (RStudio: Session > Set Working Directory >",
+        "## To Source File Location).",
+        "##",
+        "## Columns of the data file:",
+        "##   series    'Raw' (every logger reading) or 'Filtered'",
+        f"##             (the green WaTSS plot: {label})",
+        "##   datetime  logger clock time, read as UTC so there are no daylight-saving shifts",
+        "##   month     year-month, e.g. 2013-06 (handy for boxplots by month)",
+        "##   days      days since the first reading",
+        "##   segment   unbroken run of readings; the line breaks where the logger has a gap",
+        f"##   temp      temperature in {deg}",
+        "",
+        "# You need the following package(s):",
+        'library("ggplot2")',
+        "",
+        "# Read the data and split it into the two series:",
+        f"df <- read.csv({_r_str(csv_name)}, stringsAsFactors = FALSE)",
+        "df$datetime <- as.POSIXct(df$datetime, format = '%Y-%m-%d %H:%M:%S', tz = 'UTC')",
+        "raw <- df[df$series == 'Raw', ]",
+        "filtered <- df[df$series == 'Filtered', ]",
+        "",
+        "# The summary period set with the yellow and orange sliders in WaTSS:",
+        f"period <- c({_r_time(t_left)}, {_r_time(t_right)})",
+    ]
+    if xlim:
+        out += ["", "# The zoomed time range shown in WaTSS (delete the coord_cartesian() lines to see everything):",
+                f"zoom <- c({_r_time(xlim[0])}, {_r_time(xlim[1])})"]
+    out += [
+        "",
+        "# The code below will generate the raw graph:",
+        graph("graph_raw", "raw", R_COLOURS["raw"], raw_layers),
+        "# The code below will generate the filtered graph:",
+        graph("graph_filtered", "filtered", R_COLOURS["filtered"], low_layers),
+        "# If you want the plot to be interactive,",
+        "# you need the following package(s) (remove the # to run):",
+        '# library("plotly")',
+        "# ggplotly(graph_filtered)",
+        "",
+        "# If you would like to save your graph, you can use (remove the # to run):",
+        f"# ggsave('{base}_raw.pdf', graph_raw, width = 25, height = 10, units = 'cm')",
+        f"# ggsave('{base}_filtered.pdf', graph_filtered, width = 25, height = 10, units = 'cm')",
+        "",
+        "# To keep exploring with ggplotgui's point-and-click interface on your own",
+        "# machine (boxplots or violins of temp by month, histograms, density plots;",
+        "# ggplotgui has no line graph, so the plots above are written by hand), run:",
+        '# install.packages("ggplotgui")   # or remotes::install_github("gertstulp/ggplotgui")',
+        "# ggplotgui::ggplot_shiny(raw)",
+        f"# You can also upload {csv_name} at {GGPLOTGUI_URL}",
+        "# (choose Delimiter: Comma and Decimal mark: Point). That sends the data to their server.",
+        "",
+    ]
+    return "\n".join(out)
+
+
+def r_bundle(source_name, unit, t, y, low_t, low_y, dt, filt, averaging, window,
+             t_left, t_right, xlim=None, raw_ylim=None, low_ylim=None):
+    """Zip of the R script and its data file. Returns (zip file name, bytes)."""
+    base = file_base(source_name)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"{base}_watss.csv", r_data_csv(t, y, low_t, low_y, dt))
+        z.writestr(f"{base}_watss_plots.R", r_script(
+            source_name, unit, filt, averaging, window, t_left, t_right,
+            xlim, raw_ylim, low_ylim, len(low_t)))
+    return f"{base}_ggplot2.zip", buf.getvalue()
 
 
 # ---------------------------------------------------------------- sample data

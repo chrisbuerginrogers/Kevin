@@ -4,6 +4,8 @@ Holds the loaded record and the current filtered series in Python, and exposes a
 small API on window.WaTSS that the page calls. All analysis lives in watss.py.
 """
 
+import math
+
 import js
 from pyodide.ffi import create_proxy, to_js
 from pyscript import window
@@ -51,13 +53,28 @@ def export(t_left, t_right, filt, averaging, win):
                 "text": watss.export_text(state["name"], t, y, t_left, t_right)})
 
 
+def r_code(t_left, t_right, filt, averaging, win, x0, x1, ry0, ry1, ly0, ly1):
+    """Zip of ggplot2 code + tidy data. Missing zoom / y-limits come in as NaN."""
+    def pair(a, b):
+        return None if math.isnan(a) or math.isnan(b) else (a, b)
+    t, y = state["low"]
+    name, data = watss.r_bundle(state["name"], state["unit"], state["t"], state["y"], t, y, state["dt"],
+                                filt, averaging, int(win), t_left, t_right,
+                                pair(x0, x1), pair(ry0, ry1), pair(ly0, ly1))
+    buf = js.Uint8Array.new(len(data))
+    buf.assign(data)
+    out = js.Object.new()
+    out.name, out.data = name, buf
+    return out
+
+
 def sample():
     return watss.sample_csv()
 
 
 api = js.Object.new()
 for _name, _fn in {"load": load, "setUnit": set_unit, "setFilter": set_filter, "stats": stats,
-                   "thresholds": thresholds, "export": export, "sample": sample}.items():
+                   "thresholds": thresholds, "export": export, "rCode": r_code, "sample": sample}.items():
     setattr(api, _name, create_proxy(_fn))
 window.WaTSS = api
 window.dispatchEvent(js.CustomEvent.new("watss-ready"))

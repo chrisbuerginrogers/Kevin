@@ -103,6 +103,7 @@
     <label class="inline">Source units
       <select id="unitSel"><option value="F">°F</option><option value="C">°C</option></select>
     </label>
+    <button id="rBtn" disabled title="ggplot2 code (in ggplotgui's style) plus the data, as a .zip, to redraw and edit both plots in R">Download R code</button>
     <span class="file" id="fileInfo">Starting Python… (first load can take a few seconds)</span>
   </div>
 
@@ -173,6 +174,7 @@
             <li><strong>Filter.</strong> <em>Filter</em> passes Raw Data or the Daily Max to the green plot; <em>Averaging</em> then applies a daily, weekly (7‑day blocks from the first reading, plotted at noon on day 4), monthly or running average. For a running daily mean on hourly data use Raw Data + window 24 points; for MWMT‑style curves use Daily Max + window 7 days.</li>
             <li><strong>Summarize.</strong> Drag the yellow (left) and orange (right) sliders on the green plot. Summary statistics use the <em>raw</em> readings between the sliders, regardless of the filter.</li>
             <li><strong>Export</strong> saves what the green plot shows between the sliders as a WaTSS text file, which can be read back in.</li>
+            <li><strong>Download R code</strong> saves a <code>.zip</code> with an R script and a tidy <code>.csv</code> of both series. The script redraws both plots in <a href="https://ggplot2.tidyverse.org/" target="_blank" rel="noopener">ggplot2</a>, with the current filter, sliders, zoom and Y limits. It is laid out like the code from <a href="https://shiny.gmw.rug.nl/ggplotgui/" target="_blank" rel="noopener">ggplotgui</a>. ggplotgui has no line graph, but the script shows how to open the same data in it for boxplots or histograms by month.</li>
           </ol>
           <p>Accepted format: two header lines (ignored), then comma‑separated rows of <code>reading #, date time, temperature</code>, e.g. <code>608,9/1/11 7:50:54 PM,51.19</code>. Dates are month/day/year.</p>
           <p>Screen for logger problems: a jagged, air‑like trace suggests the logger was dewatered (desiccation); unusually damped diel swings suggest burial in sediment.</p>
@@ -257,6 +259,7 @@
     tL = extent.x0; tR = extent.x1;
     cursorIdx = nearest(r.t, (extent.x0 + extent.x1) / 2);
     $("#exportBtn").disabled = false;
+    $("#rBtn").disabled = false;
     ["#rawYmin", "#rawYmax", "#lowYmin", "#lowYmax"].forEach(s => $(s).value = "");
     rebuild();
   }
@@ -586,14 +589,27 @@
   $("#unitSel").onchange = () => { if (src) { src.unit = $("#unitSel").value; py.setUnit(src.unit); rebuild(); } };
 
   // ---------------- export (file text is built in Python) ----------------
+  function download(name, blob) {
+    const link = document.createElement("a");
+    link.download = name;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
   $("#exportBtn").onclick = () => {
     if (!src) return;
     const r = py.export(tL, tR, $("#filterSel").value, $("#avgSel").value, win());
-    const link = document.createElement("a");
-    link.download = r.name;
-    link.href = URL.createObjectURL(new Blob([r.text], { type: "text/plain" }));
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    download(r.name, new Blob([r.text], { type: "text/plain" }));
+  };
+  $("#rBtn").onclick = () => {
+    if (!src) return;
+    const zoomed = view.x0 > extent.x0 || view.x1 < extent.x1;
+    // y-limits only when the user typed one; then pass the range the plot actually shows
+    const ylim = (p, a, b) => $(a).value !== "" || $(b).value !== "" ? [p.y0, p.y1] : [NaN, NaN];
+    const r = py.rCode(tL, tR, $("#filterSel").value, $("#avgSel").value, win(),
+      zoomed ? view.x0 : NaN, zoomed ? view.x1 : NaN,
+      ...ylim(rawPlot, "#rawYmin", "#rawYmax"), ...ylim(lowPlot, "#lowYmin", "#lowYmax"));
+    download(r.name, new Blob([r.data], { type: "application/zip" }));
   };
 
   // ---------------- file loading ----------------
