@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WaTSS</title>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.2.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.2.1/core.js"></script>
+  <style>
+    :root {
+      --bg: #f5f5f2; --card: #ffffff; --text: #1b1b1b; --muted: #6b6b6b; --border: #e2e2de;
+      --grid: #ececea; --accent: #2f5bd3; --accent-soft: #eaf0fd;
+      --raw: #1f6fd1; --filt: #138a55; --cursor: #d62d20; --sl: #c99a00; --sr: #e46a00;
+      --sel: rgba(47, 91, 211, .12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121212; --card: #1c1c1c; --text: #ececec; --muted: #9a9a9a; --border: #2e2e2e;
+        --grid: #292929; --accent: #7aa2ff; --accent-soft: #1f2a44;
+        --raw: #4ea3ff; --filt: #3ecf8e; --cursor: #ff5a4f; --sl: #ffd43b; --sr: #ff922b;
+        --sel: rgba(122, 162, 255, .16);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { margin: 0; font-size: 1.7rem; }
+    h1 small { font-size: .95rem; font-weight: 400; color: var(--muted); margin-left: 8px; }
+    h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0; }
+    .sub { color: var(--muted); margin: 4px 0 20px; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    .stack { display: grid; gap: 16px; min-width: 0; }
+
+    .loadbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 16px; }
+    .loadbar .file { color: var(--muted); font-size: .9rem; min-width: 0; overflow-wrap: anywhere; }
+    .loadbar .file strong { color: var(--text); }
+    body.dragging .card.drop { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+    button, select, input[type=number] {
+      font: inherit; font-size: .9rem; color: var(--text); background: var(--card);
+      border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px;
+    }
+    button { cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { filter: brightness(1.08); }
+    button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+    button:disabled { opacity: .45; cursor: default; }
+    input[type=number] { width: 72px; }
+    label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); }
+    .seg { display: inline-flex; }
+    .seg button { border-radius: 0; margin-left: -1px; }
+    .seg button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+    .seg button:last-child { border-radius: 0 7px 7px 0; }
+
+    .plothead { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    canvas { display: block; width: 100%; height: 260px; touch-action: pan-y; border-radius: 6px; }
+    canvas:focus-visible { outline: 2px solid var(--accent); }
+    .readout { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: .85rem; color: var(--muted); margin-top: 6px;
+               font-variant-numeric: tabular-nums; min-height: 1.4em; }
+    .readout b { color: var(--text); font-weight: 600; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+    .tabs { display: flex; gap: 4px; margin: 10px 0 8px; }
+    .tabs button { flex: 1; }
+    table.stats { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    table.stats td { padding: 7px 0; border-top: 1px solid var(--border); vertical-align: top; }
+    table.stats tr:first-child td { border-top: 0; }
+    table.stats .k { font-weight: 600; }
+    table.stats .k span { display: block; font-weight: 400; font-size: .78rem; color: var(--muted); }
+    table.stats .v { text-align: right; font-size: 1.15rem; font-weight: 600; white-space: nowrap; }
+    table.stats .v span { display: block; font-weight: 400; font-size: .75rem; color: var(--muted); }
+    .note { font-size: .8rem; color: var(--muted); margin: 8px 0 0; }
+    .ref { font-size: .85rem; margin: 8px 0 0; padding-left: 18px; }
+    .ref li { margin: 4px 0; }
+
+    details { margin-top: 0; }
+    summary { cursor: pointer; font-weight: 600; }
+    pre { margin: 10px 0 0; max-height: 260px; overflow: auto; font-size: .8rem; line-height: 1.45;
+          background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+    .help p, .help li { font-size: .9rem; }
+    code { font-size: .85em; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+    .err { color: var(--cursor); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>WaTSS <small>Water Temperature Summary Software</small></h1>
+  <p class="sub">Load a thermograph file exported from HOBOware (.csv) or a WaTSS export (.txt). Everything runs in your browser (analysis in Python via PyScript); files are not uploaded.</p>
+
+  <div class="card drop loadbar">
+    <button class="primary" id="openBtn" disabled>Open data file…</button>
+    <input type="file" id="fileInput" accept=".csv,.txt,text/csv,text/plain" class="hidden">
+    <button id="sampleBtn" disabled>Try sample data</button>
+    <label class="inline">Source units
+      <select id="unitSel"><option value="F">°F</option><option value="C">°C</option></select>
+    </label>
+    <span class="file" id="fileInfo">Starting Python… (first load can take a few seconds)</span>
+  </div>
+
+  <div class="layout">
+    <div class="stack">
+      <!-- Raw plot -->
+      <section class="card">
+        <div class="plothead">
+          <h2><span class="swatch" style="background:var(--raw)"></span>Raw temperature</h2>
+          <div class="tools">
+            <div class="seg" role="group" aria-label="Plot tool">
+              <button data-mode="cursor" aria-pressed="true" title="Move the red cursor (top) or the nearest slider (bottom)">Cursor</button>
+              <button data-mode="zoom" aria-pressed="false" title="Drag across a plot to zoom in">Zoom</button>
+              <button data-mode="pan" aria-pressed="false" title="Drag a plot to shift it">Pan</button>
+            </div>
+            <div class="seg">
+              <button id="stepL" title="Previous reading">◀</button>
+              <button id="stepR" title="Next reading">▶</button>
+            </div>
+            <button id="resetBtn">Reset</button>
+            <label class="inline">Y <input type="number" id="rawYmin" placeholder="auto" step="any"> – <input type="number" id="rawYmax" placeholder="auto" step="any"></label>
+          </div>
+        </div>
+        <canvas id="rawCanvas" tabindex="0" aria-label="Raw temperature plot. Use left and right arrow keys to step the cursor."></canvas>
+        <div class="readout" id="cursorOut"></div>
+      </section>
+
+      <!-- Filtered plot -->
+      <section class="card">
+        <div class="plothead">
+          <h2><span class="swatch" style="background:var(--filt)"></span>Filtered temperature</h2>
+          <div class="tools">
+            <label class="inline">Filter
+              <select id="filterSel"><option value="raw">Raw Data</option><option value="max">Daily Max</option></select>
+            </label>
+            <label class="inline">Averaging
+              <select id="avgSel">
+                <option value="none">Raw Data</option>
+                <option value="daily">Daily Average</option>
+                <option value="weekly">Weekly Average</option>
+                <option value="monthly">Monthly Average</option>
+                <option value="running">Running Average</option>
+              </select>
+            </label>
+            <label class="inline hidden" id="winWrap">Window <input type="number" id="winInput" min="1" step="1" value="24"> <span id="winUnit">points</span></label>
+            <button id="exportBtn" disabled>Export</button>
+            <label class="inline">Y <input type="number" id="lowYmin" placeholder="auto" step="any"> – <input type="number" id="lowYmax" placeholder="auto" step="any"></label>
+          </div>
+        </div>
+        <canvas id="lowCanvas" tabindex="0" aria-label="Filtered temperature plot with left and right sliders."></canvas>
+        <div class="readout" id="sliderOut"></div>
+      </section>
+
+      <section class="card">
+        <details>
+          <summary>Input file</summary>
+          <pre id="inputPreview">No file loaded.</pre>
+        </details>
+      </section>
+
+      <section class="card help">
+        <details>
+          <summary>How to use</summary>
+          <ol>
+            <li><strong>Get data.</strong> In HOBOware choose <em>File → Export Points as Excel Text</em> (or the “Export Table Data” button) with “Export to a single file” selected. Open the resulting <code>.csv</code> here.</li>
+            <li><strong>Check units.</strong> Units are read from the file header when possible; otherwise set <em>Source units</em>. 12‑hr (AM/PM) and 24‑hr times are detected automatically.</li>
+            <li><strong>Explore.</strong> <em>Cursor</em> shows the date and temperature under the red crosshair (arrow keys or ◀ ▶ step one reading). <em>Zoom</em>: drag across either plot. <em>Pan</em>: drag to shift. <em>Reset</em> restores the full record. Both plots share the time axis.</li>
+            <li><strong>Filter.</strong> <em>Filter</em> passes Raw Data or the Daily Max to the green plot; <em>Averaging</em> then applies a daily, weekly (7‑day blocks from the first reading, plotted at noon on day 4), monthly or running average. For a running daily mean on hourly data use Raw Data + window 24 points; for MWMT‑style curves use Daily Max + window 7 days.</li>
+            <li><strong>Summarize.</strong> Drag the yellow (left) and orange (right) sliders on the green plot. Summary statistics use the <em>raw</em> readings between the sliders, regardless of the filter.</li>
+            <li><strong>Export</strong> saves what the green plot shows between the sliders as a WaTSS text file, which can be read back in.</li>
+          </ol>
+          <p>Accepted format: two header lines (ignored), then comma‑separated rows of <code>reading #, date time, temperature</code>, e.g. <code>608,9/1/11 7:50:54 PM,51.19</code>. Dates are month/day/year.</p>
+          <p>Screen for logger problems: a jagged, air‑like trace suggests the logger was dewatered (desiccation); unusually damped diel swings suggest burial in sediment.</p>
+          <p class="note">Based on the WaTSS 3.0 user manual (Rogers, K. B. 2015, Colorado Parks and Wildlife).</p>
+        </details>
+      </section>
+    </div>
+
+    <!-- Summary -->
+    <aside class="stack">
+      <section class="card">
+        <h2>Summary between sliders</h2>
+        <div class="tabs" role="tablist">
+          <button role="tab" data-tab="metric" aria-pressed="true">Metric</button>
+          <button role="tab" data-tab="english" aria-pressed="false">English</button>
+        </div>
+        <table class="stats" id="statsTable"><tbody><tr><td class="note">Load data to see results.</td></tr></tbody></table>
+        <p class="note" id="statsNote"></p>
+      </section>
+      <section class="card">
+        <h2>Reference thresholds</h2>
+        <ul class="ref" id="refList"></ul>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const HOUR = 36e5, DAY = 864e5;
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  // ---------------- state ----------------
+  let src = null;            // raw series for plotting: { name, unit, t: [ms], y: [temp], dt }
+  let low = { t: [], y: [] };
+  const view = { x0: 0, x1: 1 };
+  const extent = { x0: 0, x1: 1 };
+  let cursorIdx = -1, tL = 0, tR = 0, mode = "cursor", tab = "metric";
+
+  // ---------------- helpers ----------------
+  const pad = n => String(n).padStart(2, "0");
+  function lb(a, x) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < x) lo = m + 1; else hi = m; } return lo; }
+  function ub(a, x) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] <= x) lo = m + 1; else hi = m; } return lo; }
+  function nearest(a, x) {
+    if (!a.length) return -1;
+    const i = lb(a, x);
+    if (i <= 0) return 0; if (i >= a.length) return a.length - 1;
+    return x - a[i - 1] <= a[i] - x ? i - 1 : i;
+  }
+  function fmtDate(t, time = true) {
+    const d = new Date(t);
+    const s = `${MON[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+    return time ? `${s} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` : s;
+  }
+  function fmtShort(t) { const d = new Date(t); return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`; }
+  const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------------- Python bridge: all analysis lives in watss.py ----------------
+  let py = null;
+  const win = () => Math.max(1, Math.floor(+$("#winInput").value) || 1);
+
+  function load(text, name) {
+    if (!py) return;
+    const r = py.load(text, name, $("#unitSel").value);
+    if (!r.ok) {
+      $("#fileInfo").innerHTML = `<span class="err">Could not read temperature data from <strong>${esc(name)}</strong>. Expected rows like <code>1,6/2/13 12:00:00 PM,55.2</code>.</span>`;
+      return;
+    }
+    $("#unitSel").value = r.unit;
+    src = { name, t: r.t, y: r.y, dt: r.dt, unit: r.unit };
+    const n = r.t.length, mins = Math.round(r.dt / 60000);
+    $("#fileInfo").innerHTML = `<strong>${esc(name)}</strong> · ${n.toLocaleString()} readings · ` +
+      `${fmtDate(r.t[0], false)} – ${fmtDate(r.t[n - 1], false)} · every ${mins >= 60 && mins % 60 === 0 ? mins / 60 + " h" : mins + " min"} · ` +
+      `${r.ampm ? "12-hr (AM/PM)" : "24-hr"} clock · units °${r.unit} ${r.unitFromFile ? "(from header)" : "(set manually)"}`;
+    const shown = text.split(/\r\n|\r|\n/);
+    $("#inputPreview").textContent = shown.slice(0, 400).join("\n") + (shown.length > 400 ? `\n… (${(shown.length - 400).toLocaleString()} more lines)` : "");
+    extent.x0 = r.t[0]; extent.x1 = r.t[n - 1];
+    if (extent.x1 === extent.x0) extent.x1 += HOUR;
+    view.x0 = extent.x0; view.x1 = extent.x1;
+    tL = extent.x0; tR = extent.x1;
+    cursorIdx = nearest(r.t, (extent.x0 + extent.x1) / 2);
+    $("#exportBtn").disabled = false;
+    ["#rawYmin", "#rawYmax", "#lowYmin", "#lowYmax"].forEach(s => $(s).value = "");
+    rebuild();
+  }
+
+  function rebuild() {
+    if (!src) { drawAll(); return; }
+    const r = py.setFilter($("#filterSel").value, $("#avgSel").value, win());
+    low = { t: r.t, y: r.y };
+    update();
+  }
+
+  function renderStats() {
+    const tb = $("#statsTable tbody");
+    if (!src) { tb.innerHTML = `<tr><td class="note">Load data to see results.</td></tr>`; $("#statsNote").textContent = ""; return; }
+    const st = py.stats(tL, tR);
+    if (!st) { tb.innerHTML = `<tr><td class="note">No raw readings between the sliders.</td></tr>`; $("#statsNote").textContent = ""; return; }
+    const s = st[tab], U = tab === "english" ? "°F" : "°C";
+    const v = x => x == null ? `<span style="font-size:.8rem">needs more days</span>` : x.toFixed(1);
+    const range = (a, b) => a == null ? "" : `${fmtShort(a)} – ${fmtDate(b, false)}`;
+    const row = (k, sub, val, when) => `<tr><td class="k">${k}<span>${sub}</span></td><td class="v">${val}<span>${when || ""}</span></td></tr>`;
+    tb.innerHTML =
+      row(`AveTemp ${U}`, "mean of raw readings", v(s.ave)) +
+      row(`DailyMax ${U}`, "highest 2-h running average", v(s.dmax), s.dmaxAt == null ? "" : fmtDate(s.dmaxAt)) +
+      row(`DegDays ${U}`, "Σ daily mean above freezing", v(s.degdays)) +
+      row(`MWAT ${U}`, "max 7-day mean of daily means", v(s.mwat), range(s.mwatFrom, s.mwatTo)) +
+      row(`MWMT ${U}`, "max 7-day mean of daily maxima", v(s.mwmt), range(s.mwmtFrom, s.mwmtTo)) +
+      row(`M30AT ${U}`, "max 30-day mean of daily means", v(s.m30at), range(s.m30atFrom, s.m30atTo));
+    $("#statsNote").textContent = `${st.n.toLocaleString()} raw readings over ${st.days} calendar day${st.days === 1 ? "" : "s"}. Rolling metrics need consecutive days with data; filters do not change these values.`;
+  }
+
+  function renderRef() {
+    if (!py) return;
+    $("#refList").innerHTML = py.thresholds(tab).map(([a, b]) => `<li><strong>${esc(a)}</strong>: ${esc(b)}</li>`).join("");
+  }
+
+  // ---------------- plotting ----------------
+  class Plot {
+    constructor(canvas, kind) { this.c = canvas; this.kind = kind; this.ctx = canvas.getContext("2d"); this.sel = null; this.M = { l: 52, r: 12, t: 10, b: 24 }; }
+    get W() { return this.cw - this.M.l - this.M.r; }
+    get H() { return this.ch - this.M.t - this.M.b; }
+    xToPx(t) { return this.M.l + (t - view.x0) / (view.x1 - view.x0) * this.W; }
+    pxToX(px) { return view.x0 + (px - this.M.l) / this.W * (view.x1 - view.x0); }
+    yToPx(v) { return this.M.t + (1 - (v - this.y0) / (this.y1 - this.y0)) * this.H; }
+
+    draw(t, y, opts) {
+      const c = this.c, dpr = window.devicePixelRatio || 1;
+      this.cw = c.clientWidth; this.ch = c.clientHeight;
+      if (c.width !== Math.round(this.cw * dpr) || c.height !== Math.round(this.ch * dpr)) {
+        c.width = Math.round(this.cw * dpr); c.height = Math.round(this.ch * dpr);
+      }
+      const g = this.ctx;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, this.cw, this.ch);
+      const colText = cssVar("--muted"), colGrid = cssVar("--grid"), colBorder = cssVar("--border");
+      g.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+      if (!src || !t.length) {
+        g.fillStyle = colText; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillText(src ? "No points for this filter (try a smaller window)" : "Open a data file or try the sample data", this.cw / 2, this.ch / 2);
+        return;
+      }
+
+      // visible range and y-scale
+      const i0 = Math.max(0, lb(t, view.x0) - 1), i1 = Math.min(t.length, ub(t, view.x1) + 1);
+      let lo = Infinity, hi = -Infinity;
+      for (let i = i0; i < i1; i++) { if (y[i] < lo) lo = y[i]; if (y[i] > hi) hi = y[i]; }
+      if (!isFinite(lo)) { lo = 0; hi = 1; }
+      if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+      const padY = (hi - lo) * 0.06; lo -= padY; hi += padY;
+      const umin = parseFloat(opts.ymin.value), umax = parseFloat(opts.ymax.value);
+      this.y0 = isFinite(umin) ? umin : lo; this.y1 = isFinite(umax) ? umax : hi;
+      if (this.y1 <= this.y0) this.y1 = this.y0 + 1;
+
+      const { l, t: top } = this.M, W = this.W, H = this.H;
+      // grid + y ticks
+      const ystep = niceStep((this.y1 - this.y0) / Math.max(2, Math.floor(H / 40)));
+      g.strokeStyle = colGrid; g.lineWidth = 1; g.fillStyle = colText; g.textAlign = "right"; g.textBaseline = "middle";
+      for (let v = Math.ceil(this.y0 / ystep) * ystep; v <= this.y1 + 1e-9; v += ystep) {
+        const py = Math.round(this.yToPx(v)) + .5;
+        g.beginPath(); g.moveTo(l, py); g.lineTo(l + W, py); g.stroke();
+        g.fillText(+v.toFixed(6) + "", l - 6, py);
+      }
+      g.save(); g.translate(12, top + H / 2); g.rotate(-Math.PI / 2); g.textAlign = "center";
+      g.fillText(`Temperature (°${src.unit})`, 0, 0); g.restore();
+      // x ticks
+      g.textAlign = "center"; g.textBaseline = "top";
+      for (const [tt, label] of timeTicks(view.x0, view.x1, W)) {
+        const px = Math.round(this.xToPx(tt)) + .5;
+        g.beginPath(); g.moveTo(px, top); g.lineTo(px, top + H); g.stroke();
+        g.fillText(label, px, top + H + 6);
+      }
+      g.strokeStyle = colBorder; g.strokeRect(l + .5, top + .5, W, H);
+
+      // data
+      g.save(); g.beginPath(); g.rect(l, top, W, H); g.clip();
+      g.strokeStyle = opts.color; g.fillStyle = opts.color; g.lineWidth = 1.4; g.lineJoin = "round";
+      const gapMs = Math.max(src.dt, medianGap(t)) * 6;
+      if (i1 - i0 > W * 2.5) {
+        // min/max per pixel column
+        g.beginPath();
+        let col = -1, mn = 0, mx = 0, prevT = -Infinity;
+        const flush = () => { if (col >= 0) { g.moveTo(col + .5, this.yToPx(mx)); g.lineTo(col + .5, this.yToPx(mn) + .01); } };
+        for (let i = i0; i < i1; i++) {
+          const px = Math.floor(this.xToPx(t[i]));
+          if (px !== col) { flush(); col = px; mn = mx = y[i]; }
+          else { if (y[i] < mn) mn = y[i]; if (y[i] > mx) mx = y[i]; }
+          prevT = t[i];
+        }
+        flush(); g.lineWidth = 1; g.stroke();
+      } else {
+        g.beginPath();
+        for (let i = i0; i < i1; i++) {
+          const px = this.xToPx(t[i]), py = this.yToPx(y[i]);
+          if (i === i0 || t[i] - t[i - 1] > gapMs) g.moveTo(px, py); else g.lineTo(px, py);
+        }
+        g.stroke();
+        if (i1 - i0 < 80) for (let i = i0; i < i1; i++) { g.beginPath(); g.arc(this.xToPx(t[i]), this.yToPx(y[i]), 2.6, 0, 7); g.fill(); }
+      }
+      g.restore();
+
+      if (opts.overlay) opts.overlay(g, this);
+
+      // zoom selection
+      if (this.sel) {
+        const a = Math.max(l, Math.min(this.sel[0], this.sel[1])), b = Math.min(l + W, Math.max(this.sel[0], this.sel[1]));
+        g.fillStyle = cssVar("--sel"); g.fillRect(a, top, b - a, H);
+      }
+    }
+  }
+  function niceStep(raw) {
+    const p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+  const gapCache = new WeakMap();
+  function medianGap(t) {
+    if (gapCache.has(t)) return gapCache.get(t);
+    const d = []; for (let i = 1; i < t.length && d.length < 1000; i++) d.push(t[i] - t[i - 1]);
+    d.sort((a, b) => a - b); const v = d.length ? d[d.length >> 1] : HOUR;
+    gapCache.set(t, v); return v;
+  }
+  function timeTicks(x0, x1, W) {
+    const span = x1 - x0, maxTicks = Math.max(2, Math.floor(W / 95));
+    const steps = [[1, "h"], [3, "h"], [6, "h"], [12, "h"], [1, "d"], [2, "d"], [7, "d"], [14, "d"], [1, "M"], [2, "M"], [3, "M"], [6, "M"], [12, "M"], [24, "M"], [60, "M"]];
+    const ms = ([n, u]) => n * (u === "h" ? HOUR : u === "d" ? DAY : 30.44 * DAY);
+    const step = steps.find(s => span / ms(s) <= maxTicks) || steps[steps.length - 1];
+    const out = [];
+    if (step[1] !== "M") {
+      const sm = ms(step);
+      for (let tt = Math.ceil(x0 / sm) * sm; tt <= x1; tt += sm) {
+        const d = new Date(tt);
+        out.push([tt, step[1] === "h" ? `${fmtShort(tt)} ${pad(d.getUTCHours())}:00` : fmtShort(tt)]);
+      }
+    } else {
+      const d = new Date(x0); let m = d.getUTCFullYear() * 12 + d.getUTCMonth();
+      m = Math.ceil(m / step[0]) * step[0];
+      for (;; m += step[0]) {
+        const tt = Date.UTC(Math.floor(m / 12), m % 12, 1);
+        if (tt < x0) continue; if (tt > x1) break;
+        out.push([tt, step[0] >= 12 ? String(Math.floor(m / 12)) : `${MON[m % 12]} ${Math.floor(m / 12)}`]);
+      }
+    }
+    return out;
+  }
+
+  const rawPlot = new Plot($("#rawCanvas"), "raw");
+  const lowPlot = new Plot($("#lowCanvas"), "low");
+
+  function drawAll() {
+    rawPlot.draw(src ? src.t : [], src ? src.y : [], {
+      color: cssVar("--raw"), ymin: $("#rawYmin"), ymax: $("#rawYmax"),
+      overlay: (g, p) => {
+        if (cursorIdx < 0 || !src) return;
+        const px = p.xToPx(src.t[cursorIdx]), py = p.yToPx(src.y[cursorIdx]);
+        g.save(); g.beginPath(); g.rect(p.M.l, p.M.t, p.W, p.H); g.clip();
+        g.strokeStyle = cssVar("--cursor"); g.lineWidth = 1;
+        g.beginPath(); g.moveTo(Math.round(px) + .5, p.M.t); g.lineTo(Math.round(px) + .5, p.M.t + p.H);
+        g.moveTo(p.M.l, Math.round(py) + .5); g.lineTo(p.M.l + p.W, Math.round(py) + .5); g.stroke();
+        g.fillStyle = cssVar("--cursor"); g.beginPath(); g.arc(px, py, 3.5, 0, 7); g.fill();
+        g.restore();
+      }
+    });
+    lowPlot.draw(low.t, low.y, {
+      color: cssVar("--filt"), ymin: $("#lowYmin"), ymax: $("#lowYmax"),
+      overlay: (g, p) => {
+        for (const [tt, col] of [[tL, cssVar("--sl")], [tR, cssVar("--sr")]]) {
+          const px = Math.round(p.xToPx(tt)) + .5;
+          if (px < p.M.l - 1 || px > p.M.l + p.W + 1) continue;
+          g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([5, 4]);
+          g.beginPath(); g.moveTo(px, p.M.t); g.lineTo(px, p.M.t + p.H); g.stroke(); g.setLineDash([]);
+          g.fillStyle = col; g.beginPath(); g.moveTo(px - 6, p.M.t); g.lineTo(px + 6, p.M.t); g.lineTo(px, p.M.t + 8); g.fill();
+        }
+      }
+    });
+    renderReadouts();
+  }
+
+  function renderReadouts() {
+    if (!src) { $("#cursorOut").innerHTML = ""; $("#sliderOut").innerHTML = ""; return; }
+    const u = "°" + src.unit;
+    $("#cursorOut").innerHTML = cursorIdx >= 0
+      ? `<span><span class="swatch" style="background:var(--cursor)"></span>Cursor <b>${fmtDate(src.t[cursorIdx])}</b></span><span><b>${src.y[cursorIdx].toFixed(2)} ${u}</b></span><span>reading ${cursorIdx + 1} of ${src.t.length.toLocaleString()}</span>`
+      : "";
+    const at = tt => { const i = nearest(low.t, tt); return i < 0 ? "—" : `${low.y[i].toFixed(2)} ${u}`; };
+    $("#sliderOut").innerHTML =
+      `<span><span class="swatch" style="background:var(--sl)"></span>Left <b>${fmtDate(tL)}</b> · ${at(tL)}</span>` +
+      `<span><span class="swatch" style="background:var(--sr)"></span>Right <b>${fmtDate(tR)}</b> · ${at(tR)}</span>` +
+      `<span>${((tR - tL) / DAY).toFixed(1)} days</span>`;
+  }
+
+  let raf = 0, statsDirty = false;
+  function update(stats = true) {
+    statsDirty = statsDirty || stats;
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; drawAll(); if (statsDirty) { renderStats(); statsDirty = false; } });
+  }
+
+  // ---------------- interaction ----------------
+  function clampView() {
+    const span = Math.min(view.x1 - view.x0, extent.x1 - extent.x0);
+    const minSpan = Math.max(src ? src.dt * 4 : HOUR, HOUR);
+    let s = Math.max(span, minSpan);
+    if (view.x0 < extent.x0) { view.x0 = extent.x0; view.x1 = view.x0 + s; }
+    if (view.x1 > extent.x1) { view.x1 = extent.x1; view.x0 = view.x1 - s; }
+    if (view.x1 - view.x0 < minSpan) view.x1 = view.x0 + minSpan;
+  }
+  function setCursorAt(tt) { cursorIdx = nearest(src.t, tt); update(false); }
+  function moveSlider(which, tt) {
+    tt = Math.max(extent.x0, Math.min(extent.x1, tt));
+    const i = nearest(low.t, tt);          // snap to a point on the filtered plot
+    if (i >= 0) tt = low.t[i];
+    if (which === "L") tL = Math.min(tt, tR); else tR = Math.max(tt, tL);
+    update(true);
+  }
+  function stepCursor(d) {
+    if (!src) return;
+    cursorIdx = Math.max(0, Math.min(src.t.length - 1, cursorIdx + d));
+    const tt = src.t[cursorIdx];
+    if (tt < view.x0 || tt > view.x1) { const s = view.x1 - view.x0; view.x0 = tt - s / 2; view.x1 = tt + s / 2; clampView(); }
+    update(false);
+  }
+
+  function attach(plot, isLow) {
+    const c = plot.c; let drag = null;
+    const xOf = e => e.clientX - c.getBoundingClientRect().left;
+    const nearSlider = x => {
+      const dl = Math.abs(x - plot.xToPx(tL)), dr = Math.abs(x - plot.xToPx(tR));
+      return Math.min(dl, dr) <= 8 ? (dl <= dr ? "L" : "R") : null;
+    };
+    c.addEventListener("pointerdown", e => {
+      if (!src) return;
+      const x = xOf(e);
+      try { c.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+      if (isLow) {
+        const ns = nearSlider(x);
+        if (ns || mode === "cursor") {
+          const which = ns || (Math.abs(x - plot.xToPx(tL)) <= Math.abs(x - plot.xToPx(tR)) ? "L" : "R");
+          drag = { type: "slider", which }; moveSlider(which, plot.pxToX(x)); return;
+        }
+      } else if (mode === "cursor") { drag = { type: "cursor" }; setCursorAt(plot.pxToX(x)); return; }
+      if (mode === "zoom") { drag = { type: "zoom" }; plot.sel = [x, x]; }
+      else if (mode === "pan") { drag = { type: "pan", x, x0: view.x0, x1: view.x1 }; }
+    });
+    c.addEventListener("pointermove", e => {
+      if (!src) return;
+      const x = xOf(e);
+      if (!drag) {
+        c.style.cursor = isLow && nearSlider(x) ? "ew-resize" : mode === "pan" ? "grab" : "crosshair";
+        return;
+      }
+      if (drag.type === "slider") moveSlider(drag.which, plot.pxToX(x));
+      else if (drag.type === "cursor") setCursorAt(plot.pxToX(x));
+      else if (drag.type === "zoom") { plot.sel[1] = x; update(false); }
+      else if (drag.type === "pan") {
+        const dt = (x - drag.x) / plot.W * (drag.x1 - drag.x0);
+        view.x0 = drag.x0 - dt; view.x1 = drag.x1 - dt; clampView(); update(false);
+      }
+    });
+    const end = () => {
+      if (drag && drag.type === "zoom" && plot.sel) {
+        const [a, b] = plot.sel.slice().sort((p, q) => p - q);
+        if (b - a > 6) { const n0 = plot.pxToX(a), n1 = plot.pxToX(b); view.x0 = n0; view.x1 = n1; clampView(); }
+        plot.sel = null; update(false);
+      }
+      drag = null;
+    };
+    c.addEventListener("pointerup", end);
+    c.addEventListener("pointercancel", end);
+  }
+  attach(rawPlot, false);
+  attach(lowPlot, true);
+
+  $("#rawCanvas").addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); stepCursor(e.shiftKey ? -24 : -1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); stepCursor(e.shiftKey ? 24 : 1); }
+  });
+  $("#stepL").onclick = () => stepCursor(-1);
+  $("#stepR").onclick = () => stepCursor(1);
+
+  document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  });
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
+    tab = b.dataset.tab;
+    document.querySelectorAll("[data-tab]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    renderStats(); renderRef();
+  });
+  $("#resetBtn").onclick = () => {
+    if (!src) return;
+    view.x0 = extent.x0; view.x1 = extent.x1;
+    ["#rawYmin", "#rawYmax", "#lowYmin", "#lowYmax"].forEach(s => $(s).value = "");
+    update(false);
+  };
+  ["#rawYmin", "#rawYmax", "#lowYmin", "#lowYmax"].forEach(s => $(s).addEventListener("input", () => update(false)));
+
+  function syncWindow() {
+    const running = $("#avgSel").value === "running";
+    $("#winWrap").classList.toggle("hidden", !running);
+    $("#winUnit").textContent = $("#filterSel").value === "max" ? "days" : "points";
+  }
+  $("#filterSel").onchange = () => {
+    $("#winInput").value = $("#filterSel").value === "max" ? 7 : Math.max(1, Math.round(DAY / (src ? src.dt : HOUR)));
+    syncWindow(); rebuild();
+  };
+  $("#avgSel").onchange = () => { syncWindow(); rebuild(); };
+  $("#winInput").addEventListener("input", rebuild);
+  $("#unitSel").onchange = () => { if (src) { src.unit = $("#unitSel").value; py.setUnit(src.unit); rebuild(); } };
+
+  // ---------------- export (file text is built in Python) ----------------
+  $("#exportBtn").onclick = () => {
+    if (!src) return;
+    const r = py.export(tL, tR, $("#filterSel").value, $("#avgSel").value, win());
+    const link = document.createElement("a");
+    link.download = r.name;
+    link.href = URL.createObjectURL(new Blob([r.text], { type: "text/plain" }));
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  };
+
+  // ---------------- file loading ----------------
+  $("#openBtn").onclick = () => $("#fileInput").click();
+  $("#fileInput").onchange = e => { const f = e.target.files[0]; if (f) f.text().then(t => load(t, f.name)); e.target.value = ""; };
+  let dragDepth = 0;
+  window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+  window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+  window.addEventListener("dragover", e => e.preventDefault());
+  window.addEventListener("drop", e => {
+    e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+    const f = e.dataTransfer.files[0]; if (f && py) f.text().then(t => load(t, f.name));
+  });
+  $("#sampleBtn").onclick = () => load(py.sample(), "SampleCreek_synthetic.csv");
+
+  // ---------------- init ----------------
+  new ResizeObserver(() => update(false)).observe($("#rawCanvas"));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => update(false));
+  syncWindow(); renderStats(); drawAll();
+
+  function ready() {
+    py = window.WaTSS;
+    ["#openBtn", "#sampleBtn"].forEach(s => $(s).disabled = false);
+    $("#fileInfo").textContent = "No file loaded. You can also drag a file onto this page.";
+    renderRef(); renderStats();
+  }
+  if (window.WaTSS) ready(); else window.addEventListener("watss-ready", ready, { once: true });
+})();
+</script>
+<script type="py" src="./main.py" config='{"files": {"./watss.py": "./watss.py"}}'></script>
+</body>
+</html>
