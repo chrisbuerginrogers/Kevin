@@ -149,6 +149,17 @@
               </select>
             </label>
             <label class="inline hidden" id="winWrap">Window <input type="number" id="winInput" min="1" step="1" value="24"> <span id="winUnit">points</span></label>
+            <label class="inline" title="Free: move each slider anywhere. Month or Year: the yellow slider snaps to the start of a month or year and the orange slider jumps to its end.">Sliders
+              <select id="lockSel">
+                <option value="free">Free</option>
+                <option value="month">Lock to month</option>
+                <option value="year">Lock to year</option>
+              </select>
+            </label>
+            <div class="seg hidden" id="periodStep">
+              <button id="perL" title="Previous month">◀</button>
+              <button id="perR" title="Next month">▶</button>
+            </div>
             <button id="exportBtn" disabled>Export</button>
             <label class="inline">Y <input type="number" id="lowYmin" placeholder="auto" step="any"> – <input type="number" id="lowYmax" placeholder="auto" step="any"></label>
           </div>
@@ -172,7 +183,7 @@
             <li><strong>Check units.</strong> Units are read from the file header when possible; otherwise set <em>Source units</em>. 12‑hr (AM/PM) and 24‑hr times are detected automatically.</li>
             <li><strong>Explore.</strong> <em>Cursor</em> shows the date and temperature under the red crosshair (arrow keys or ◀ ▶ step one reading). <em>Zoom</em>: drag across either plot. <em>Pan</em>: drag to shift. <em>Reset</em> restores the full record. Both plots share the time axis.</li>
             <li><strong>Filter.</strong> <em>Filter</em> passes Raw Data or the Daily Max to the green plot; <em>Averaging</em> then applies a daily, weekly (7‑day blocks from the first reading, plotted at noon on day 4), monthly or running average. For a running daily mean on hourly data use Raw Data + window 24 points; for MWMT‑style curves use Daily Max + window 7 days.</li>
-            <li><strong>Summarize.</strong> Drag the yellow (left) and orange (right) sliders on the green plot. Summary statistics use the <em>raw</em> readings between the sliders, regardless of the filter.</li>
+            <li><strong>Summarize.</strong> Drag the yellow (left) and orange (right) sliders on the green plot. Summary statistics use the <em>raw</em> readings between the sliders, regardless of the filter. Set <em>Sliders</em> to <em>Lock to month</em> or <em>Lock to year</em> to summarize whole calendar months or years: click or drag on the green plot to pick one, the yellow slider snaps to its start and the orange slider to its end. Use the ◀ ▶ buttons beside it (or the arrow keys on the green plot) to step through them.</li>
             <li><strong>Export</strong> saves what the green plot shows between the sliders as a WaTSS text file, which can be read back in.</li>
             <li><strong>Download R code</strong> saves a <code>.zip</code> with an R script and a tidy <code>.csv</code> of both series. The script redraws both plots in <a href="https://ggplot2.tidyverse.org/" target="_blank" rel="noopener">ggplot2</a>, with the current filter, sliders, zoom and Y limits. It is laid out like the code from <a href="https://shiny.gmw.rug.nl/ggplotgui/" target="_blank" rel="noopener">ggplotgui</a>. ggplotgui has no line graph, but the script shows how to open the same data in it for boxplots or histograms by month.</li>
           </ol>
@@ -257,6 +268,7 @@
     if (extent.x1 === extent.x0) extent.x1 += HOUR;
     view.x0 = extent.x0; view.x1 = extent.x1;
     tL = extent.x0; tR = extent.x1;
+    if (lockMode() !== "free") setPeriod(periodStart(extent.x0));
     cursorIdx = nearest(r.t, (extent.x0 + extent.x1) / 2);
     $("#exportBtn").disabled = false;
     $("#rBtn").disabled = false;
@@ -463,7 +475,7 @@
       ? `<span><span class="swatch" style="background:var(--cursor)"></span>Cursor <b>${fmtDate(src.t[cursorIdx])}</b></span><span><b>${src.y[cursorIdx].toFixed(2)} ${u}</b></span><span>reading ${cursorIdx + 1} of ${src.t.length.toLocaleString()}</span>`
       : "";
     const at = tt => { const i = nearest(low.t, tt); return i < 0 ? "—" : `${low.y[i].toFixed(2)} ${u}`; };
-    $("#sliderOut").innerHTML =
+    $("#sliderOut").innerHTML = periodLabel() +
       `<span><span class="swatch" style="background:var(--sl)"></span>Left <b>${fmtDate(tL)}</b> · ${at(tL)}</span>` +
       `<span><span class="swatch" style="background:var(--sr)"></span>Right <b>${fmtDate(tR)}</b> · ${at(tR)}</span>` +
       `<span>${((tR - tL) / DAY).toFixed(1)} days</span>`;
@@ -486,7 +498,54 @@
     if (view.x1 - view.x0 < minSpan) view.x1 = view.x0 + minSpan;
   }
   function setCursorAt(tt) { cursorIdx = nearest(src.t, tt); update(false); }
-  function moveSlider(which, tt) {
+
+  // ---- slider lock: whole calendar months or years ----
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  let curPeriod = null;      // start (ms) of the locked month/year, or null in Free mode
+  const lockMode = () => $("#lockSel").value;
+  // Start of the month/year containing tt, shifted by `off` periods.
+  function periodStart(tt, off = 0) {
+    const d = new Date(tt);
+    return lockMode() === "month" ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + off, 1)
+                                  : Date.UTC(d.getUTCFullYear() + off, 0, 1);
+  }
+  // Lock the sliders to the period starting at `start` (kept to periods that overlap the data).
+  // Yellow goes to its first moment and orange to its last (one ms before the next period),
+  // each clipped to the record so they stay on the plot.
+  function setPeriod(start) {
+    start = Math.max(periodStart(extent.x0), Math.min(periodStart(extent.x1), start));
+    curPeriod = start;
+    tL = Math.max(start, extent.x0);
+    tR = Math.min(periodStart(start, 1) - 1, extent.x1);
+    update(true);
+  }
+  // Period picked by a pointer at time tt. Dragging a slider snaps to the nearest boundary
+  // (yellow = that boundary's period, orange = the period ending there); a click elsewhere
+  // picks the period under the pointer.
+  function periodAt(tt, which, snap) {
+    if (snap !== "round") return periodStart(tt);
+    const f = periodStart(tt), n = periodStart(f, 1);
+    const edge = tt - f < n - tt ? f : n;
+    return which === "R" ? periodStart(edge, -1) : edge;
+  }
+  function periodLabel() {
+    if (lockMode() === "free" || curPeriod == null) return "";
+    const d = new Date(curPeriod), year = d.getUTCFullYear();
+    const name = lockMode() === "month" ? `${MONTH_NAMES[d.getUTCMonth()]} ${year}` : String(year);
+    const partial = curPeriod < extent.x0 || periodStart(curPeriod, 1) - 1 > extent.x1;
+    return `<span><b>${name}</b>${partial ? ` · partial ${lockMode()} (record covers part of it)` : ""}</span>`;
+  }
+  function stepPeriod(d) { if (src && curPeriod != null) setPeriod(periodStart(curPeriod, d)); }
+  function syncLock() {
+    const k = lockMode(), locked = k !== "free";
+    $("#periodStep").classList.toggle("hidden", !locked);
+    $("#perL").title = `Previous ${k}`; $("#perR").title = `Next ${k}`;
+    if (!locked) { curPeriod = null; update(false); }
+    else if (src) setPeriod(periodStart(tL));
+  }
+
+  function moveSlider(which, tt, snap) {
+    if (lockMode() !== "free") { setPeriod(periodAt(tt, which, snap)); return; }
     tt = Math.max(extent.x0, Math.min(extent.x1, tt));
     const i = nearest(low.t, tt);          // snap to a point on the filtered plot
     if (i >= 0) tt = low.t[i];
@@ -516,7 +575,7 @@
         const ns = nearSlider(x);
         if (ns || mode === "cursor") {
           const which = ns || (Math.abs(x - plot.xToPx(tL)) <= Math.abs(x - plot.xToPx(tR)) ? "L" : "R");
-          drag = { type: "slider", which }; moveSlider(which, plot.pxToX(x)); return;
+          drag = { type: "slider", which, snap: ns ? "round" : "floor" }; moveSlider(which, plot.pxToX(x), drag.snap); return;
         }
       } else if (mode === "cursor") { drag = { type: "cursor" }; setCursorAt(plot.pxToX(x)); return; }
       if (mode === "zoom") { drag = { type: "zoom" }; plot.sel = [x, x]; }
@@ -529,7 +588,7 @@
         c.style.cursor = isLow && nearSlider(x) ? "ew-resize" : mode === "pan" ? "grab" : "crosshair";
         return;
       }
-      if (drag.type === "slider") moveSlider(drag.which, plot.pxToX(x));
+      if (drag.type === "slider") moveSlider(drag.which, plot.pxToX(x), drag.snap);
       else if (drag.type === "cursor") setCursorAt(plot.pxToX(x));
       else if (drag.type === "zoom") { plot.sel[1] = x; update(false); }
       else if (drag.type === "pan") {
@@ -557,6 +616,15 @@
   });
   $("#stepL").onclick = () => stepCursor(-1);
   $("#stepR").onclick = () => stepCursor(1);
+
+  $("#lockSel").onchange = syncLock;
+  $("#perL").onclick = () => stepPeriod(-1);
+  $("#perR").onclick = () => stepPeriod(1);
+  $("#lowCanvas").addEventListener("keydown", e => {
+    if (lockMode() === "free") return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); stepPeriod(-1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); stepPeriod(1); }
+  });
 
   document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => {
     mode = b.dataset.mode;
