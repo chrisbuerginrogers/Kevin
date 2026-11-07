@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StockDB</title>
+  <style>
+    :root {
+      --bg: #f7f7f5; --card: #ffffff; --text: #1b1b1b; --muted: #6b6b6b;
+      --border: #e3e3e0; --up: #1a7f4b; --down: #c0392b; --accent: #2f5bd3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141414; --card: #1e1e1e; --text: #ececec; --muted: #9a9a9a;
+        --border: #2e2e2e; --up: #3ecf8e; --down: #ff6b6b; --accent: #7aa2ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 900px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin: 0 0 4px; font-size: 1.8rem; }
+    .sub { color: var(--muted); margin: 0 0 24px; }
+    input {
+      width: 100%; padding: 10px 12px; margin-bottom: 16px; font-size: 1rem;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--card); color: var(--text);
+    }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 14px; text-align: left; white-space: nowrap; }
+    th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+         border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+    tr + tr td { border-top: 1px solid var(--border); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .up { color: var(--up); } .down { color: var(--down); }
+    .sym { font-weight: 600; }
+    svg { display: block; }
+    footer { color: var(--muted); font-size: .85rem; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>StockDB</h1>
+    <p class="sub">Sample page to test GitHub Pages. Prices below are made-up demo data.</p>
+
+    <input id="search" type="search" placeholder="Filter by symbol or name…" aria-label="Filter stocks">
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th data-key="symbol">Symbol</th>
+            <th data-key="name">Name</th>
+            <th data-key="price" class="num">Price</th>
+            <th data-key="change" class="num">Change</th>
+            <th>5-day</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <footer>Click a column header to sort. Last built: <span id="built"></span></footer>
+  </main>
+
+  <script>
+    const stocks = [
+      { symbol: "ACME", name: "Acme Corp",          history: [102.1, 103.4, 101.9, 104.2, 105.8] },
+      { symbol: "GLBX", name: "Globex Industries",  history: [58.3, 57.9, 56.2, 55.7, 54.9] },
+      { symbol: "INIT", name: "Initech",            history: [21.0, 21.6, 22.1, 21.8, 22.7] },
+      { symbol: "UMBR", name: "Umbrella Holdings",  history: [310.5, 305.2, 308.9, 312.4, 309.1] },
+      { symbol: "STRK", name: "Stark Manufacturing",history: [190.2, 193.8, 197.5, 196.1, 201.3] },
+      { symbol: "WAYN", name: "Wayne Enterprises",  history: [145.0, 143.2, 144.7, 141.9, 140.6] },
+    ].map(s => {
+      const price = s.history.at(-1), prev = s.history.at(-2);
+      return { ...s, price, change: ((price - prev) / prev) * 100 };
+    });
+
+    let sortKey = "symbol", sortDir = 1;
+
+    function sparkline(values, cls) {
+      const w = 90, h = 28, min = Math.min(...values), max = Math.max(...values);
+      const pts = values.map((v, i) =>
+        `${(i / (values.length - 1)) * w},${h - ((v - min) / (max - min || 1)) * (h - 4) - 2}`
+      ).join(" ");
+      return `<svg width="${w}" height="${h}" class="${cls}" aria-hidden="true">
+        <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
+    }
+
+    function render() {
+      const q = document.getElementById("search").value.trim().toLowerCase();
+      const list = stocks
+        .filter(s => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q))
+        .sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : a[sortKey] < b[sortKey] ? -1 : 0) * sortDir);
+
+      document.getElementById("rows").innerHTML = list.map(s => {
+        const cls = s.change >= 0 ? "up" : "down";
+        return `<tr>
+          <td class="sym">${s.symbol}</td>
+          <td>${s.name}</td>
+          <td class="num">$${s.price.toFixed(2)}</td>
+          <td class="num ${cls}">${s.change >= 0 ? "+" : ""}${s.change.toFixed(2)}%</td>
+          <td>${sparkline(s.history, cls)}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    document.querySelectorAll("th[data-key]").forEach(th =>
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        sortDir = key === sortKey ? -sortDir : 1;
+        sortKey = key;
+        render();
+      })
+    );
+    document.getElementById("search").addEventListener("input", render);
+    document.getElementById("built").textContent = document.lastModified;
+    render();
+  </script>
+</body>
+</html>
