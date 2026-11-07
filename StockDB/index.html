@@ -7,12 +7,12 @@
   <style>
     :root {
       --bg: #f7f7f5; --card: #ffffff; --text: #1b1b1b; --muted: #6b6b6b;
-      --border: #e3e3e0; --up: #1a7f4b; --down: #c0392b; --accent: #2f5bd3;
+      --border: #e3e3e0; --hover: #eef2fb; --accent: #2f5bd3; --stripe: #fafaf8;
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --bg: #141414; --card: #1e1e1e; --text: #ececec; --muted: #9a9a9a;
-        --border: #2e2e2e; --up: #3ecf8e; --down: #ff6b6b; --accent: #7aa2ff;
+        --border: #2e2e2e; --hover: #26304a; --accent: #7aa2ff; --stripe: #222222;
       }
     }
     * { box-sizing: border-box; }
@@ -20,105 +20,236 @@
       margin: 0; background: var(--bg); color: var(--text);
       font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    main { max-width: 900px; margin: 0 auto; padding: 32px 16px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 16px; }
     h1 { margin: 0 0 4px; font-size: 1.8rem; }
     .sub { color: var(--muted); margin: 0 0 24px; }
+
+    .search { display: grid; grid-template-columns: 1fr 200px; gap: 12px; margin-bottom: 12px; }
+    @media (max-width: 600px) { .search { grid-template-columns: 1fr; } }
+    label { display: block; font-size: .8rem; font-weight: 600; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
     input {
-      width: 100%; padding: 10px 12px; margin-bottom: 16px; font-size: 1rem;
+      width: 100%; padding: 10px 12px; font-size: 1rem;
       border: 1px solid var(--border); border-radius: 8px;
       background: var(--card); color: var(--text);
     }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px 14px; text-align: left; white-space: nowrap; }
-    th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-         border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
-    tr + tr td { border-top: 1px solid var(--border); }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .up { color: var(--up); } .down { color: var(--down); }
-    .sym { font-weight: 600; }
-    svg { display: block; }
-    footer { color: var(--muted); font-size: .85rem; margin-top: 16px; }
+    input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+    .combo { position: relative; }
+    .suggest {
+      position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px 0;
+      list-style: none; max-height: 320px; overflow-y: auto;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    }
+    .suggest[hidden] { display: none; }
+    .suggest li { padding: 6px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+    .suggest li[aria-selected="true"], .suggest li:hover { background: var(--hover); }
+    .suggest .meta { color: var(--muted); font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .suggest mark { background: none; color: var(--accent); font-weight: 600; }
+
+    .status { color: var(--muted); font-size: .9rem; margin: 8px 0; min-height: 1.5em; }
+    .status strong { color: var(--text); }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      overflow: auto; max-height: 65vh;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: 8px 12px; text-align: left; white-space: nowrap; }
+    th {
+      position: sticky; top: 0; background: var(--card); z-index: 1;
+      font-size: .75rem; letter-spacing: .04em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr:nth-child(even) { background: var(--stripe); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .empty { padding: 32px; text-align: center; color: var(--muted); }
   </style>
 </head>
 <body>
   <main>
     <h1>StockDB</h1>
-    <p class="sub">Sample page to test GitHub Pages. Prices below are made-up demo data.</p>
+    <p class="sub">Western stocking records, 1952–1999. Search by lake name or 5-digit water code.</p>
 
-    <input id="search" type="search" placeholder="Filter by symbol or name…" aria-label="Filter stocks">
+    <div class="search">
+      <div class="combo">
+        <label for="name">Lake / water name</label>
+        <input id="name" type="text" autocomplete="off" placeholder="Start typing, e.g. Taylor…"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
+        <ul id="suggest" class="suggest" role="listbox" hidden></ul>
+      </div>
+      <div>
+        <label for="code">Water code</label>
+        <input id="code" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 19009">
+      </div>
+    </div>
+
+    <div class="status" id="status">Loading data…</div>
 
     <div class="card">
       <table>
-        <thead>
-          <tr>
-            <th data-key="symbol">Symbol</th>
-            <th data-key="name">Name</th>
-            <th data-key="price" class="num">Price</th>
-            <th data-key="change" class="num">Change</th>
-            <th>5-day</th>
-          </tr>
-        </thead>
+        <thead><tr id="head"></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
-
-    <footer>Click a column header to sort. Last built: <span id="built"></span></footer>
   </main>
 
   <script>
-    const stocks = [
-      { symbol: "ACME", name: "Acme Corp",          history: [102.1, 103.4, 101.9, 104.2, 105.8] },
-      { symbol: "GLBX", name: "Globex Industries",  history: [58.3, 57.9, 56.2, 55.7, 54.9] },
-      { symbol: "INIT", name: "Initech",            history: [21.0, 21.6, 22.1, 21.8, 22.7] },
-      { symbol: "UMBR", name: "Umbrella Holdings",  history: [310.5, 305.2, 308.9, 312.4, 309.1] },
-      { symbol: "STRK", name: "Stark Manufacturing",history: [190.2, 193.8, 197.5, 196.1, 201.3] },
-      { symbol: "WAYN", name: "Wayne Enterprises",  history: [145.0, 143.2, 144.7, 141.9, 140.6] },
-    ].map(s => {
-      const price = s.history.at(-1), prev = s.history.at(-2);
-      return { ...s, price, change: ((price - prev) / prev) * 100 };
+    const DATA_URL = "WestStock52-99mod.txt";
+    const NUMERIC = new Set(["CODE", "NUMFISH", "INSIZE", "YEAR"]);
+
+    let columns = [];   // header names
+    let records = [];   // arrays of strings, one per row
+    let places = [];    // unique {code, name, count, key}
+
+    const $ = id => document.getElementById(id);
+    const nameInput = $("name"), codeInput = $("code"), list = $("suggest");
+
+    // ---------- load + parse ----------
+    fetch(DATA_URL)
+      .then(r => { if (!r.ok) throw new Error(r.status + " " + r.statusText); return r.text(); })
+      .then(parse)
+      .catch(err => { $("status").textContent = "Could not load " + DATA_URL + ": " + err.message; });
+
+    function parse(text) {
+      const lines = text.split(/\r\n|\r|\n/);
+      columns = lines[0].split("\t").map(s => s.trim());
+      const yearIdx = columns.indexOf("YEAR");
+      const byPlace = new Map();
+
+      for (let i = 1; i < lines.length; i++) {
+        const f = lines[i].split("\t");
+        if (!f[0] || !f[0].trim()) continue;                // skip blank/trailer rows
+        const row = columns.map((_, j) => (f[j] || "").trim());
+        const y = parseInt(row[yearIdx], 10);              // 2-digit years -> 19xx
+        row[yearIdx] = !y ? "" : y < 100 ? String(1900 + y) : String(y);
+        records.push(row);
+
+        const key = row[0] + "|" + row[1];
+        const p = byPlace.get(key);
+        if (p) p.count++;
+        else byPlace.set(key, { code: row[0], name: row[1], lname: row[1].toLowerCase(), count: 1, key });
+      }
+      places = [...byPlace.values()].sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code));
+
+      $("head").innerHTML = columns.map(c => `<th${NUMERIC.has(c) ? ' class="num"' : ""}>${c}</th>`).join("");
+      $("status").innerHTML = `<strong>${records.length.toLocaleString()}</strong> records, ` +
+        `<strong>${places.length.toLocaleString()}</strong> waters loaded. Search above to see rows.`;
+      nameInput.focus();
+    }
+
+    // ---------- autocomplete ----------
+    let matches = [], active = -1;
+
+    function findMatches(q) {
+      q = q.trim().toLowerCase();
+      if (!q) return [];
+      const starts = [], wordStarts = [], contains = [];
+      for (const p of places) {
+        const i = p.lname.indexOf(q);
+        if (i === 0) starts.push(p);
+        else if (i > 0 && /[\s#(\-\/]/.test(p.lname[i - 1])) wordStarts.push(p);
+        else if (i > 0) contains.push(p);
+      }
+      return starts.concat(wordStarts, contains).slice(0, 60);
+    }
+
+    function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+    function highlight(name, q) {
+      const i = name.toLowerCase().indexOf(q.trim().toLowerCase());
+      if (i < 0 || !q.trim()) return esc(name);
+      const n = q.trim().length;
+      return esc(name.slice(0, i)) + "<mark>" + esc(name.slice(i, i + n)) + "</mark>" + esc(name.slice(i + n));
+    }
+
+    function openList() {
+      const q = nameInput.value;
+      matches = findMatches(q);
+      active = -1;
+      if (!matches.length) return closeList();
+      list.innerHTML = matches.map((p, i) =>
+        `<li role="option" id="opt${i}" data-i="${i}" aria-selected="false">
+           <span>${highlight(p.name, q)}</span>
+           <span class="meta">${p.code} · ${p.count} rows</span>
+         </li>`).join("");
+      list.hidden = false;
+      nameInput.setAttribute("aria-expanded", "true");
+    }
+
+    function closeList() {
+      list.hidden = true; list.innerHTML = ""; matches = []; active = -1;
+      nameInput.setAttribute("aria-expanded", "false");
+      nameInput.removeAttribute("aria-activedescendant");
+    }
+
+    function setActive(i) {
+      const items = list.children;
+      if (active >= 0 && items[active]) items[active].setAttribute("aria-selected", "false");
+      active = i;
+      if (active >= 0 && items[active]) {
+        items[active].setAttribute("aria-selected", "true");
+        items[active].scrollIntoView({ block: "nearest" });
+        nameInput.setAttribute("aria-activedescendant", items[active].id);
+      }
+    }
+
+    function choose(p) {
+      nameInput.value = p.name;
+      codeInput.value = p.code;
+      closeList();
+      show(records.filter(r => r[0] === p.code && r[1] === p.name), `<strong>${esc(p.name)}</strong> (code ${p.code})`);
+    }
+
+    function searchByNameText() {
+      const q = nameInput.value.trim().toLowerCase();
+      closeList();
+      if (!q) return;
+      codeInput.value = "";
+      show(records.filter(r => r[1].toLowerCase().includes(q)), `names containing “<strong>${esc(nameInput.value.trim())}</strong>”`);
+    }
+
+    nameInput.addEventListener("input", openList);
+    nameInput.addEventListener("focus", () => { if (nameInput.value.trim()) openList(); });
+    nameInput.addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); if (list.hidden) openList(); else setActive(Math.min(active + 1, matches.length - 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setActive(Math.max(active - 1, 0)); }
+      else if (e.key === "Enter") { e.preventDefault(); active >= 0 ? choose(matches[active]) : searchByNameText(); }
+      else if (e.key === "Escape") closeList();
+    });
+    list.addEventListener("mousedown", e => {
+      const li = e.target.closest("li");
+      if (li) { e.preventDefault(); choose(matches[+li.dataset.i]); }
+    });
+    nameInput.addEventListener("blur", () => setTimeout(closeList, 100));
+
+    // ---------- code search ----------
+    codeInput.addEventListener("input", () => {
+      codeInput.value = codeInput.value.replace(/\D/g, "");
+      const code = codeInput.value;
+      if (code.length === 5) {
+        const rows = records.filter(r => r[0] === code);
+        const names = [...new Set(rows.map(r => r[1]))];
+        nameInput.value = names.length === 1 ? names[0] : "";
+        show(rows, `water code <strong>${code}</strong>` + (names.length > 1 ? ` (${names.map(esc).join(", ")})` : ""));
+      }
     });
 
-    let sortKey = "symbol", sortDir = 1;
+    // ---------- table ----------
+    function show(rows, label) {
+      const fishIdx = columns.indexOf("NUMFISH");
+      const total = rows.reduce((s, r) => s + (parseFloat(r[fishIdx]) || 0), 0);
+      $("status").innerHTML = rows.length
+        ? `<strong>${rows.length.toLocaleString()}</strong> rows for ${label} · ${total.toLocaleString()} fish total`
+        : `No rows found for ${label}.`;
 
-    function sparkline(values, cls) {
-      const w = 90, h = 28, min = Math.min(...values), max = Math.max(...values);
-      const pts = values.map((v, i) =>
-        `${(i / (values.length - 1)) * w},${h - ((v - min) / (max - min || 1)) * (h - 4) - 2}`
-      ).join(" ");
-      return `<svg width="${w}" height="${h}" class="${cls}" aria-hidden="true">
-        <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
+      $("rows").innerHTML = rows.length
+        ? rows.map(r => "<tr>" + r.map((v, j) =>
+            `<td${NUMERIC.has(columns[j]) ? ' class="num"' : ""}>${esc(v)}</td>`).join("") + "</tr>").join("")
+        : `<tr><td class="empty" colspan="${columns.length}">No matching records</td></tr>`;
+      document.querySelector(".card").scrollTop = 0;
     }
-
-    function render() {
-      const q = document.getElementById("search").value.trim().toLowerCase();
-      const list = stocks
-        .filter(s => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q))
-        .sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : a[sortKey] < b[sortKey] ? -1 : 0) * sortDir);
-
-      document.getElementById("rows").innerHTML = list.map(s => {
-        const cls = s.change >= 0 ? "up" : "down";
-        return `<tr>
-          <td class="sym">${s.symbol}</td>
-          <td>${s.name}</td>
-          <td class="num">$${s.price.toFixed(2)}</td>
-          <td class="num ${cls}">${s.change >= 0 ? "+" : ""}${s.change.toFixed(2)}%</td>
-          <td>${sparkline(s.history, cls)}</td>
-        </tr>`;
-      }).join("");
-    }
-
-    document.querySelectorAll("th[data-key]").forEach(th =>
-      th.addEventListener("click", () => {
-        const key = th.dataset.key;
-        sortDir = key === sortKey ? -sortDir : 1;
-        sortKey = key;
-        render();
-      })
-    );
-    document.getElementById("search").addEventListener("input", render);
-    document.getElementById("built").textContent = document.lastModified;
-    render();
   </script>
 </body>
 </html>
