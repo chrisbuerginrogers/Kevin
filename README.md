@@ -1,12 +1,12 @@
 # Kevin
 
-Browser tools for fisheries data, published with GitHub Pages.
+Browser tools for fisheries data, published with GitHub Pages. The landing page at https://chrisbuerginrogers.github.io/Kevin/ links to all three.
 
-| Tool | Live page | What it does |
-|---|---|---|
-| **StockDB** | https://chrisbuerginrogers.github.io/Kevin/StockDB/ | Look up historical fish stocking records by water name or code |
-| **WaTSS** | https://chrisbuerginrogers.github.io/Kevin/WaTSS/ | Summarize stream temperature logger data (MWAT, MWMT, M30AT, …) |
-| **JakeOmatic** | https://chrisbuerginrogers.github.io/Kevin/JakeOMatic/ | Enter and summarize lake and stream fish surveys (CPUE, PSD, Wr, removal estimates) |
+| Tool | Live page | What it does | How it calculates |
+|---|---|---|---|
+| **StockDB** | https://chrisbuerginrogers.github.io/Kevin/StockDB/ | Look up historical fish stocking records by water name or code | [StockDB/README.md](StockDB/README.md) |
+| **WaTSS** | https://chrisbuerginrogers.github.io/Kevin/WaTSS/ | Summarize stream temperature logger data (MWAT, MWMT, M30AT, …) | [WaTSS/README.md](WaTSS/README.md) |
+| **JakeOmatic** | https://chrisbuerginrogers.github.io/Kevin/JakeOMatic/ | Enter and summarize lake and stream fish surveys (CPUE, PSD, Wr, removal estimates) | [JakeOMatic/README.md](JakeOMatic/README.md) |
 
 ## StockDB
 
@@ -45,6 +45,7 @@ A browser version of WaTSS 3.0, built from the user manual (`WaTSS/WaTSSmanual3_
   - MWMT: the warmest 7-day mean of daily maxima.
   - M30AT: the warmest 30-day mean of daily means.
 - **Export** saves the filtered series between the sliders as a WaTSS text file, which can be loaded again.
+- **Download R code** saves a `.zip` with an R script and a tidy `.csv` (`series, datetime, month, days, segment, temp`). The script redraws both plots in ggplot2 with the current filter, sliders, zoom and Y limits. It is laid out like the code from [ggplotgui](https://shiny.gmw.rug.nl/ggplotgui/) (`df`, `theme_bw()`, plotly and `ggsave` lines). ggplotgui has no line graph, so the time-series code is written by hand. The script ends with how to open the same data in ggplotgui (`ggplotgui::ggplot_shiny(raw)`) for boxplots or histograms by month.
 - **Try sample data** loads a synthetic 18-month hourly record for demonstration.
 
 ### How it's built
@@ -53,7 +54,7 @@ The page uses [PyScript](https://pyscript.net) (Pyodide), so the analysis runs a
 
 | File | Role |
 |---|---|
-| `WaTSS/watss.py` | All analysis: parsing, filters, statistics, thresholds, export, sample data. Pure Python with no browser code. |
+| `WaTSS/watss.py` | All analysis: parsing, filters, statistics, thresholds, export (WaTSS text and R/ggplot2 zip), sample data. Pure Python with no browser code. |
 | `WaTSS/main.py` | A small PyScript bridge that keeps the loaded data and exposes `window.WaTSS` to the page |
 | `WaTSS/index.html` | The interface only: layout, canvas plots, mouse and keyboard handling |
 
@@ -88,7 +89,7 @@ The pages load their data and Python files with `fetch`, so opening them directl
 
 ```bash
 python3 -m http.server 8000
-# then open http://localhost:8000/StockDB/, /WaTSS/ or /JakeOMatic/
+# then open http://localhost:8000/ (or /StockDB/, /WaTSS/, /JakeOMatic/)
 ```
 
 Pushing to `main` redeploys GitHub Pages within a minute or two.
