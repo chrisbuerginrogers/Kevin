@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JakeOmatic</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://pyscript.net/releases/2025.2.1/core.css">
+<script type="module" src="https://pyscript.net/releases/2025.2.1/core.js"></script>
+<style>
+  /* Same look as WaTSS */
+  :root {
+    --bg: #f5f5f2; --card: #ffffff; --text: #1b1b1b; --muted: #6b6b6b; --border: #e2e2de;
+    --grid: #ececea; --accent: #2f5bd3; --accent-soft: #eaf0fd; --entry: #ffffff; --row-hover: #f3f5fb;
+    --c1: #1f6fd1; --c2: #138a55; --c3: #e46a00; --c4: #b8860b; --danger: #c62828;
+    /* names used by inline styles in the markup */
+    --fg: var(--text); --dim: var(--muted); --yellow: var(--accent); --orange: var(--c3);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212; --card: #1c1c1c; --text: #ececec; --muted: #9a9a9a; --border: #2e2e2e;
+      --grid: #292929; --accent: #7aa2ff; --accent-soft: #1f2a44; --entry: #151515; --row-hover: #232a38;
+      --c1: #4ea3ff; --c2: #3ecf8e; --c3: #ff922b; --c4: #ffd43b; --danger: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* ── header + tabs ── */
+  #header {
+    max-width: 1440px; margin: 0 auto; padding: 24px 16px 8px;
+    display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; justify-content: space-between;
+  }
+  #header h1 { margin: 0; font-size: 1.7rem; }
+  #header .subtitle { color: var(--muted); font-size: .95rem; }
+  #header > div:last-child { flex-wrap: wrap; }
+  #header .version { font-size: .8rem; color: var(--muted); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
+  .tab-bar { max-width: 1440px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    font: inherit; font-weight: 600; padding: 8px 14px; border: 0; background: none; color: var(--muted);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── layout ── */
+  .survey-layout {
+    max-width: 1440px; margin: 0 auto; padding: 16px;
+    display: grid; grid-template-columns: 320px minmax(0, 1fr) 320px; gap: 16px; align-items: start;
+  }
+  .meta-col, .table-col, .chart-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+  @media (max-width: 1180px) { .survey-layout { grid-template-columns: 300px minmax(0, 1fr); } .chart-col { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .survey-layout { grid-template-columns: minmax(0, 1fr); } .chart-col { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ── cards ── */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .card-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
+
+  /* ── form fields ── */
+  .field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .field-row label { width: 92px; flex-shrink: 0; font-size: .85rem; color: var(--muted); }
+  input[type="text"], input[type="number"], input[type="date"], select, textarea {
+    font: inherit; font-size: .9rem; color: var(--text); background: var(--entry);
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; flex: 1; min-width: 0;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type="number"] { width: 90px; flex: none; }
+  textarea { resize: vertical; min-height: 60px; }
+  .hint { font-size: .8rem; color: var(--muted); margin-top: 6px; }
+
+  /* ── buttons ── */
+  .btn {
+    font: inherit; font-size: .9rem; color: var(--text); background: var(--card);
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn-green, .btn-blue { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-green:hover, .btn-blue:hover { filter: brightness(1.08); }
+  .btn-red { color: var(--danger); }
+  .btn-red:hover { border-color: var(--danger); }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+  /* ── segmented toggles and species chips ── */
+  .unit-toggle { display: inline-flex; }
+  .unit-toggle input { display: none; }
+  .unit-toggle label {
+    width: auto !important; margin: 0 0 0 -1px; padding: 5px 10px; font-size: .9rem; color: var(--text);
+    border: 1px solid var(--border); background: var(--card); cursor: pointer; user-select: none;
+  }
+  .unit-toggle label:first-of-type { border-radius: 7px 0 0 7px; margin-left: 0; }
+  .unit-toggle label:last-of-type { border-radius: 0 7px 7px 0; }
+  .unit-toggle input:checked + label { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); position: relative; }
+  .species-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .sp-tab { font-size: .85rem; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; color: var(--muted); }
+  .sp-tab:hover { border-color: var(--accent); }
+  .sp-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  select { width: 100%; }
+
+  /* ── statistics ── */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .stat-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+  .stat-grid > .stat-item:nth-child(-n+2) { border-top: 0; }
+  .stat-item.full { grid-column: 1 / -1; }
+  .stat-label { font-size: .82rem; color: var(--muted); }
+  .stat-value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stat-note { grid-column: 1 / -1; font-size: .8rem; color: var(--c3); padding-top: 6px; }
+  .stat-note:empty { display: none; }
+
+  /* ── fish table ── */
+  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: auto; max-height: 68vh; min-height: 220px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  thead th {
+    position: sticky; top: 0; z-index: 1; background: var(--card); color: var(--muted); font-size: .75rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase; padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 6px 12px; text-align: right; font-variant-numeric: tabular-nums; border-top: 1px solid var(--border); }
+  thead th:first-child, tbody td:first-child, thead th:nth-last-child(-n+3), tbody td:nth-last-child(-n+3) { text-align: left; }
+  tbody td:first-child { font-weight: 600; }
+  tbody tr[data-i] { cursor: pointer; }
+  tbody tr[data-i]:hover { background: var(--row-hover); }
+  tbody tr.selected { background: var(--accent-soft); }
+  .pass-1 { color: var(--c1); } .pass-2 { color: var(--c3); }
+
+  /* ── charts ── */
+  .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; min-width: 0; }
+  .chart-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+
+  /* ── modals ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.45); align-items: center; justify-content: center; padding: 16px; }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card) !important; border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+    min-width: 380px; max-width: 96vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 16px 48px rgba(0,0,0,.25);
+  }
+  .modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 14px; }
+  .modal-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .add-fish-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+  .af-pass-row.hidden { display: none; }
+  .chap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .lii-section { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin: 8px 0 6px; }
+  .lii-table, .lut-table { border-collapse: collapse; font-size: .85rem; min-width: 100%; }
+  .lii-table th, .lut-table th { position: sticky; top: 0; background: var(--card); color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .lii-table td { padding: 5px 8px; border-top: 1px solid var(--border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .lii-table td:first-child { text-align: left; font-weight: 600; }
+  .lut-table td { padding: 2px 4px; border-top: 1px solid var(--border); }
+  .lut-table input { width: 100%; padding: 3px 6px; }
+  .about-content { text-align: center; line-height: 1.7; }
+  .about-content .big-title { display: block; font-size: 2rem; font-weight: 700; margin-bottom: 6px; }
+
+  /* ── toast + loading ── */
+  #toast {
+    position: fixed; right: 16px; bottom: 16px; z-index: 999; background: var(--text); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px; font-size: .9rem; opacity: 0; transform: translateY(20px);
+    transition: all .25s ease; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: none; }
+  #toast.error { background: var(--danger); color: #fff; }
+  #pyload { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); font-size: 1.05rem; }
+  #pyload.hidden { display: none; }
+
+  @media (max-width: 760px) {
+    .modal { min-width: 0 !important; width: 100%; }
+    .add-fish-grid, .chap-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="pyload">Starting Python…</div>
+
+<!-- ── HEADER ── -->
+<div id="header">
+  <div>
+    <h1>JakeOmatic 4.0</h1>
+    <div class="subtitle">FISHERIES DATA MANAGEMENT SYSTEM — COLORADO DIV. OF WILDLIFE</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button class="btn btn-ghost" onclick="openAbout()">About</button>
+    <button class="btn btn-ghost" onclick="openChapman()">Chapman-Petersen</button>
+    <button class="btn btn-ghost" onclick="openLUT()">Species LUT</button>
+    <button class="btn btn-ghost" onclick="loadDemo()" title="Load made-up data into the current tab">Demo Data</button>
+    <button class="btn btn-blue" onclick="loadSurveyFile()">📂 Open Survey</button>
+    <span class="version">v4.0</span>
+  </div>
+</div>
+
+<!-- ── TABS ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="lake" onclick="switchTab('lake')">🏞 Lake Survey</button>
+  <button class="tab-btn" data-tab="stream" onclick="switchTab('stream')">🏔 Stream Survey</button>
+</div>
+
+<!-- ══════════════════════ LAKE SURVEY ══════════════════════ -->
+<div id="tab-lake" class="tab-panel active">
+<div class="survey-layout">
+
+  <div class="meta-col">
+    <div class="card">
+      <div class="card-title">Survey Info</div>
+      <div class="field-row"><label>Water</label><input type="text" id="l-water" placeholder="Water body name"></div>
+      <div class="field-row"><label>Date</label><input type="date" id="l-date"></div>
+      <div class="field-row"><label>Gear</label><input type="text" id="l-gear" placeholder="e.g. Gill Net"></div>
+      <div class="field-row"><label>Drainage</label><input type="text" id="l-drainage"></div>
+      <div class="field-row"><label>Crew</label><input type="text" id="l-crew"></div>
+      <div class="field-row"><label>Water Code</label><input type="text" id="l-wcode" style="width:70px;flex:none"></div>
+      <div class="field-row"><label>Notes</label><textarea id="l-notes" rows="3"></textarea></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Location</div>
+      <div class="field-row"><label>UTM Zone</label><input type="text" id="l-utmzone" style="width:60px;flex:none"></div>
+      <div class="field-row"><label>UTM X</label><input type="number" id="l-utmx" step="any" style="width:110px;flex:none"></div>
+      <div class="field-row"><label>UTM Y</label><input type="number" id="l-utmy" step="any" style="width:110px;flex:none"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Effort (Hours)</div>
+      <div class="field-row"><label>E Hours</label><input type="number" id="l-ehours" value="0" step="0.1" min="0" oninput="recalculate('lake')"></div>
+      <div class="field-row"><label>G Hours</label><input type="number" id="l-ghours" value="0" step="0.1" min="0" oninput="recalculate('lake')"></div>
+      <div class="field-row"><label>T Hours</label><input type="number" id="l-thours" value="0" step="0.1" min="0" oninput="recalculate('lake')"></div>
+      <div class="hint">Electrofishing, gill net and trap net hours.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Species</div>
+      <div class="species-tabs" id="l-sp-tabs">
+        <span class="sp-tab active" onclick="filterSpecies('lake','all',this)">All</span>
+        <span class="sp-tab" onclick="filterSpecies('lake','salmonid',this)">Salmonids</span>
+        <span class="sp-tab" onclick="filterSpecies('lake','sucker',this)">Suckers</span>
+      </div>
+      <select id="l-species" onchange="recalculate('lake')"></select>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Statistics</div>
+      <div class="stat-grid">
+        <div class="stat-item"><span class="stat-label">Fish (n)</span><span class="stat-value" id="l-n">—</span></div>
+        <div class="stat-item"><span class="stat-label">Mean Wr</span><span class="stat-value" id="l-wr">—</span></div>
+        <div class="stat-item"><span class="stat-label">E CPUE</span><span class="stat-value" id="l-ecpue">—</span></div>
+        <div class="stat-item"><span class="stat-label">E CPUE ≥S</span><span class="stat-value" id="l-ecpues">—</span></div>
+        <div class="stat-item"><span class="stat-label">G CPUE</span><span class="stat-value" id="l-gcpue">—</span></div>
+        <div class="stat-item"><span class="stat-label">G CPUE ≥S</span><span class="stat-value" id="l-gcpues">—</span></div>
+        <div class="stat-item"><span class="stat-label">T CPUE</span><span class="stat-value" id="l-tcpue">—</span></div>
+        <div class="stat-item"><span class="stat-label">T CPUE ≥S</span><span class="stat-value" id="l-tcpues">—</span></div>
+        <div class="stat-item"><span class="stat-label">PSD</span><span class="stat-value" id="l-psd">—</span></div>
+        <div class="stat-item"><span class="stat-label">RSD-P</span><span class="stat-value" id="l-rsdp">—</span></div>
+        <div class="stat-item full"><span class="stat-label">Mean Length (in)</span><span class="stat-value" id="l-meanln">—</span></div>
+        <div class="stat-item full"><span class="stat-label">Mean Weight (lbs)</span><span class="stat-value" id="l-meanwt">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-col">
+    <div class="card" style="flex-shrink:0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <div class="btn-row">
+          <div class="unit-toggle">
+            <input type="radio" name="l-unit" id="l-mm" value="mm" checked onchange="renderTable('lake')"><label for="l-mm">mm</label>
+            <input type="radio" name="l-unit" id="l-cm" value="cm" onchange="renderTable('lake')"><label for="l-cm">cm</label>
+          </div>
+          <button class="btn btn-green" onclick="openAddFish('lake')">＋ Add Fish</button>
+          <button class="btn btn-red" onclick="deleteSelectedRow('lake')">✕ Delete Row</button>
+          <button class="btn btn-green" onclick="saveSurvey('lake')">💾 Save</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-orange" onclick="estimateWeights('lake')">Est. Weight</button>
+          <button class="btn btn-orange" onclick="openLevelII('lake')">Level II</button>
+          <button class="btn btn-blue" onclick="exportCSV('lake','lf')">Export LF</button>
+          <button class="btn btn-blue" onclick="exportCSV('lake','wr')">Export Wr</button>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Species</th><th>Count</th><th id="l-len-th">Length (mm)</th><th>Weight(g)</th><th>Status</th><th>Mark</th><th>Tag ID</th></tr></thead>
+        <tbody id="l-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="chart-col">
+    <div class="chart-box"><div class="chart-title" id="l-lf-title">Length Frequency</div><canvas id="l-lf-chart"></canvas></div>
+    <div class="chart-box"><div class="chart-title" id="l-wr-title">Relative Weight (Wr)</div><canvas id="l-wr-chart"></canvas></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════ STREAM SURVEY ══════════════════════ -->
+<div id="tab-stream" class="tab-panel">
+<div class="survey-layout">
+
+  <div class="meta-col">
+    <div class="card">
+      <div class="card-title">Survey Info</div>
+      <div class="field-row"><label>Water</label><input type="text" id="s-water" placeholder="Stream name"></div>
+      <div class="field-row"><label>Date</label><input type="date" id="s-date"></div>
+      <div class="field-row"><label>Location</label><input type="text" id="s-location"></div>
+      <div class="field-row"><label>Drainage</label><input type="text" id="s-drainage"></div>
+      <div class="field-row"><label>Crew</label><input type="text" id="s-crew"></div>
+      <div class="field-row"><label>Water Code</label><input type="text" id="s-wcode" style="width:70px;flex:none"></div>
+      <div class="field-row"><label>Notes</label><textarea id="s-notes" rows="3"></textarea></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Location &amp; Station</div>
+      <div class="field-row"><label>UTM Zone</label><input type="text" id="s-utmzone" style="width:60px;flex:none"></div>
+      <div class="field-row"><label>UTM X</label><input type="number" id="s-utmx" step="any" style="width:110px;flex:none"></div>
+      <div class="field-row"><label>UTM Y</label><input type="number" id="s-utmy" step="any" style="width:110px;flex:none"></div>
+      <div class="field-row"><label>Length (ft)</label><input type="number" id="s-stlen" value="0" step="any" min="0" oninput="recalculate('stream')"></div>
+      <div class="field-row"><label>Width (ft)</label><input type="number" id="s-stwid" value="0" step="any" min="0" oninput="recalculate('stream')"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Size Filter (mm)</div>
+      <div class="field-row"><label>Min Cut</label><input type="number" id="s-mincut" value="150" min="0" oninput="recalculate('stream')"></div>
+      <div class="field-row"><label>Max Cut</label><input type="number" id="s-maxcut" value="600" min="0" oninput="recalculate('stream')"></div>
+      <div class="hint">Estimates, densities, charts and Level II use only fish within these lengths (0 = no maximum).</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Species</div>
+      <div class="species-tabs" id="s-sp-tabs">
+        <span class="sp-tab active" onclick="filterSpecies('stream','all',this)">All</span>
+        <span class="sp-tab" onclick="filterSpecies('stream','salmonid',this)">Salmonids</span>
+        <span class="sp-tab" onclick="filterSpecies('stream','sucker',this)">Suckers</span>
+      </div>
+      <select id="s-species" onchange="recalculate('stream')"></select>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Statistics</div>
+      <div class="stat-grid">
+        <div class="stat-item"><span class="stat-label">1st Pass</span><span class="stat-value" id="s-pass1">—</span></div>
+        <div class="stat-item"><span class="stat-label">2nd Pass</span><span class="stat-value" id="s-pass2">—</span></div>
+        <div class="stat-item"><span class="stat-label">Capture P</span><span class="stat-value" id="s-capp">—</span></div>
+        <div class="stat-item"><span class="stat-label">Pop Est.</span><span class="stat-value" id="s-popest">—</span></div>
+        <div class="stat-item full"><span class="stat-label">95% CI (±)</span><span class="stat-value" id="s-ci95">—</span></div>
+        <div class="stat-item"><span class="stat-label">#/HA</span><span class="stat-value" id="s-numha">—</span></div>
+        <div class="stat-item"><span class="stat-label">kg/HA</span><span class="stat-value" id="s-kgha">—</span></div>
+        <div class="stat-item"><span class="stat-label">#/km</span><span class="stat-value" id="s-numkm">—</span></div>
+        <div class="stat-item"><span class="stat-label">kg/km</span><span class="stat-value" id="s-kgkm">—</span></div>
+        <div class="stat-item full"><span class="stat-label">Mean Wr</span><span class="stat-value" id="s-wr">—</span></div>
+        <div class="stat-note" id="s-note"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-col">
+    <div class="card" style="flex-shrink:0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <div class="btn-row">
+          <div class="unit-toggle">
+            <input type="radio" name="s-unit" id="s-mm" value="mm" checked onchange="renderTable('stream')"><label for="s-mm">mm</label>
+            <input type="radio" name="s-unit" id="s-cm" value="cm" onchange="renderTable('stream')"><label for="s-cm">cm</label>
+          </div>
+          <button class="btn btn-green" onclick="openAddFish('stream')">＋ Add Fish</button>
+          <button class="btn btn-red" onclick="deleteSelectedRow('stream')">✕ Delete Row</button>
+          <button class="btn btn-green" onclick="saveSurvey('stream')">💾 Save</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-orange" onclick="estimateWeights('stream')">Est. Weight</button>
+          <button class="btn btn-orange" onclick="openLevelII('stream')">Level II</button>
+          <button class="btn btn-blue" onclick="exportCSV('stream','lf')">Export LF</button>
+          <button class="btn btn-blue" onclick="exportCSV('stream','wr')">Export Wr</button>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Species</th><th>Pass</th><th>Count</th><th id="s-len-th">Length (mm)</th><th>Weight(g)</th><th>Status</th><th>Mark</th><th>Tag ID</th></tr></thead>
+        <tbody id="s-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="chart-col">
+    <div class="chart-box"><div class="chart-title" id="s-lf-title">Length Frequency</div><canvas id="s-lf-chart"></canvas></div>
+    <div class="chart-box"><div class="chart-title" id="s-wr-title">Relative Weight (Wr)</div><canvas id="s-wr-chart"></canvas></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════ MODALS ══════════════════════ -->
+
+<!-- ADD / EDIT FISH (one dialog) -->
+<div id="modal-fish" class="modal-overlay">
+  <div class="modal" style="min-width:440px;">
+    <div class="modal-title" id="fish-title">Add Fish Record</div>
+    <div class="add-fish-grid">
+      <div class="field-row" style="grid-column:1/-1;"><label style="width:90px;">Species</label><select id="af-species" style="flex:1;"></select></div>
+      <div class="field-row"><label style="width:70px;">Count</label><input type="number" id="af-count" value="1" min="1" style="width:70px;"></div>
+      <div class="field-row af-pass-row"><label style="width:70px;">Pass #</label>
+        <div class="unit-toggle">
+          <input type="radio" name="af-pass" id="af-p1" value="1" checked><label for="af-p1">1st</label>
+          <input type="radio" name="af-pass" id="af-p2" value="2"><label for="af-p2">2nd</label>
+        </div>
+      </div>
+      <div class="field-row"><label style="width:70px;" id="af-len-label">Length (mm)</label><input type="number" id="af-length" placeholder="0" step="any" min="0" style="width:80px;"></div>
+      <div class="field-row"><label style="width:70px;">Weight (g)</label><input type="number" id="af-weight" placeholder="0" step="any" min="0" style="width:80px;"></div>
+      <div class="field-row"><label style="width:70px;">Status</label><input type="text" id="af-status"></div>
+      <div class="field-row"><label style="width:70px;">Mark</label><input type="text" id="af-mark"></div>
+      <div class="field-row" style="grid-column:1/-1;"><label style="width:70px;">Tag ID</label><input type="text" id="af-tagid"></div>
+    </div>
+    <div class="hint" id="af-hint">Enter adds the fish and keeps this dialog open for the next one.</div>
+    <div class="modal-footer" id="fish-footer-add">
+      <button class="btn btn-ghost" onclick="closeModal('modal-fish')">Cancel</button>
+      <button class="btn btn-green" onclick="addFish(false)">Add &amp; Another</button>
+      <button class="btn btn-green" onclick="addFish(true)">Add &amp; Close</button>
+    </div>
+    <div class="modal-footer" id="fish-footer-edit" style="display:none;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-fish')">Cancel</button>
+      <button class="btn btn-green" onclick="saveEditFish()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- LEVEL II -->
+<div id="modal-lii" class="modal-overlay">
+  <div class="modal" style="min-width:900px;max-width:98vw;">
+    <div class="modal-title" id="lii-title">Level II</div>
+    <div id="lii-content"></div>
+    <div class="modal-footer">
+      <button class="btn btn-blue" onclick="exportLevelII()">Export CSV</button>
+      <button class="btn btn-red" onclick="closeModal('modal-lii')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- LUT EDITOR -->
+<div id="modal-lut" class="modal-overlay">
+  <div class="modal" style="min-width:860px;max-width:98vw;">
+    <div class="modal-title">Species Look-Up Table (LUT)</div>
+    <div style="overflow-x:auto;max-height:55vh;">
+      <table class="lut-table">
+        <thead><tr><th>Name</th><th>Code</th><th>Slope</th><th>Intercept</th><th>Stock</th><th>Quality</th><th>Preferred</th><th>Memorable</th><th>Trophy</th></tr></thead>
+        <tbody id="lut-tbody"></tbody>
+      </table>
+    </div>
+    <p style="font-size:10px;color:var(--dim);margin-top:8px;">
+      log₁₀ Ws (g) = slope × log₁₀ L (mm) + intercept · lengths in mm · saved in this browser.<br>
+      Standard weight equations: Bister et al. 2000 – NAJM 20:570-574 | Hyatt &amp; Hubert 2001 – NAJM 21:253-254 | Muoneke &amp; Pope 1999 – NAJM 19:878-879
+    </p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="addLUTRow()">＋ Species</button>
+      <button class="btn btn-ghost" onclick="resetLUT()">Reset Defaults</button>
+      <button class="btn btn-green" onclick="saveLUT()">Save LUT</button>
+      <button class="btn btn-red" onclick="closeModal('modal-lut')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHAPMAN PETERSEN -->
+<div id="modal-chapman" class="modal-overlay">
+  <div class="modal" style="min-width:420px;">
+    <div class="modal-title">Chapman-Petersen Mark-Recapture</div>
+    <p style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.6;">
+      Chapman's modification of the Petersen estimator, with Seber's variance.<br>
+      The unmodified Petersen (ML estimator for t=2, Otis et al. 1978) is shown for reference.
+    </p>
+    <div class="chap-grid">
+      <div class="field-row"><label style="width:120px;">M (1st marked)</label><input type="number" id="chap-M" value="0" min="0"></div>
+      <div class="field-row"><label style="width:120px;">C (2nd captured)</label><input type="number" id="chap-C" value="0" min="0"></div>
+      <div class="field-row"><label style="width:120px;">R (recaptures)</label><input type="number" id="chap-R" value="0" min="0"></div>
+      <div></div>
+    </div>
+    <div style="margin:10px 0;"><button class="btn btn-green" onclick="calcChapman()">Calculate</button></div>
+    <div class="stat-grid">
+      <div class="stat-item full"><span class="stat-label">Population Estimate (Chapman)</span><span class="stat-value" id="chap-N">—</span></div>
+      <div class="stat-item full"><span class="stat-label">Population Estimate (Petersen)</span><span class="stat-value" id="chap-Np">—</span></div>
+      <div class="stat-item"><span class="stat-label">Capture P (R/C)</span><span class="stat-value" id="chap-p">—</span></div>
+      <div class="stat-item"><span class="stat-label">95% CI (±)</span><span class="stat-value" id="chap-ci">—</span></div>
+      <div class="stat-item"><span class="stat-label">LCL</span><span class="stat-value" id="chap-lcl">—</span></div>
+      <div class="stat-item"><span class="stat-label">UCL</span><span class="stat-value" id="chap-ucl">—</span></div>
+      <div class="stat-item full"><span class="stat-label">Variance</span><span class="stat-value" id="chap-var">—</span></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-red" onclick="closeModal('modal-chapman')">Done</button></div>
+  </div>
+</div>
+
+<!-- ABOUT -->
+<div id="modal-about" class="modal-overlay">
+  <div class="modal" style="min-width:520px;">
+    <div class="about-content">
+      <span class="big-title">JakeOmatic</span>
+      <p style="color:var(--fg);margin-bottom:4px;">VERSION 4.0 — Python (PyScript) Edition</p>
+      <p style="color:var(--dim);font-size:11px;margin-bottom:16px;">Colorado Division of Wildlife</p>
+      <p style="color:var(--fg);line-height:1.8;">
+        Kevin Rogers<br>
+        Colorado Division of Wildlife<br>
+        PO Box 775777<br>
+        Steamboat Springs, CO 80477<br>
+        (970) 871-2866
+      </p>
+      <p style="color:var(--dim);font-size:11px;margin-top:20px;line-height:1.8;max-width:420px;margin-left:auto;margin-right:auto;">
+        In March of 2001, after just starting in Jake's old position, I got a call from comrade Czenkusch.
+        He had a stack of tag recapture information and people that wanted calls back with information
+        on their fish. Turns out that the JakeOmatic at that time consisted of 4 spiral bound notebooks
+        and a bunch of loose paper.
+      </p>
+      <p style="color:var(--yellow);font-size:12px;margin-top:16px;">
+        Dedicated to my illustrious predecessor Jake Bennett...<br>
+        <em style="color:var(--dim);">computers really are good for more than gill net weights!</em>
+      </p>
+    </div>
+    <div class="modal-footer" style="justify-content:center;"><button class="btn btn-red" onclick="closeModal('modal-about')">Done</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  UI ONLY. Every calculation, record change, LUT check, save/load and
+//  export goes through window.Jake (main.py → jakeomatic.py).
+// ═══════════════════════════════════════════════════════════════════
+let py = null;
+const LUT_KEY = "jakeomatic_lut";
+const P = { lake: "l", stream: "s" };
+const META_IDS = {
+  lake:   { water: "l-water", date: "l-date", gear: "l-gear", drainage: "l-drainage", crew: "l-crew", water_code: "l-wcode",
+            utm_zone: "l-utmzone", utm_x: "l-utmx", utm_y: "l-utmy", e_hours: "l-ehours", g_hours: "l-ghours", t_hours: "l-thours", notes: "l-notes" },
+  stream: { water: "s-water", date: "s-date", location: "s-location", drainage: "s-drainage", crew: "s-crew", water_code: "s-wcode",
+            utm_zone: "s-utmzone", utm_x: "s-utmx", utm_y: "s-utmy", station_length: "s-stlen", station_width: "s-stwid",
+            min_cut: "s-mincut", max_cut: "s-maxcut", notes: "s-notes" },
+};
+const selected = { lake: null, stream: null };
+const spGroup = { lake: "all", stream: "all" };
+let fishDialog = { mode: "lake", index: null };
+let lutDraft = [];
+let currentTab = "lake";
+const charts = {};
+
+// ── small helpers ──
+const $ = id => document.getElementById(id);
+const val = id => $(id).value;
+const num = id => parseFloat($(id).value) || 0;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fx = (v, d = 2, suffix = "") => v == null ? "—" : v.toFixed(d) + suffix;
+const unitOf = mode => document.querySelector(`input[name="${P[mode]}-unit"]:checked`).value;
+function setVal(id, v) { $(id).textContent = v; }
+function meta(mode) { const m = {}; for (const [k, id] of Object.entries(META_IDS[mode])) m[k] = val(id); return m; }
+function download(name, text, type = "text/plain") {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function ready() { if (!py) toast("Python is still starting…", true); return !!py; }
+
+// ── tabs and modals ──
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + name));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  Object.values(charts).forEach(c => c.resize());
+}
+function openModal(id) { $(id).classList.add("open"); }
+function closeModal(id) { $(id).classList.remove("open"); }
+function openAbout() { openModal("modal-about"); }
+function openChapman() { openModal("modal-chapman"); }
+
+// ── species pickers ──
+function speciesOptions(group) {
+  return py.species(group).map(s => `<option value="${esc(s.code)}">${esc(s.code)} — ${esc(s.name)}</option>`).join("");
+}
+function populateSpecies() {
+  for (const mode of ["lake", "stream"]) {
+    const sel = $(`${P[mode]}-species`), cur = sel.value || "LOC";
+    sel.innerHTML = speciesOptions(spGroup[mode]);
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  }
+  $("af-species").innerHTML = speciesOptions("all");
+}
+function filterSpecies(mode, group, el) {
+  spGroup[mode] = group;
+  $(`${P[mode]}-sp-tabs`).querySelectorAll(".sp-tab").forEach(t => t.classList.toggle("active", t === el));
+  if (!ready()) return;
+  populateSpecies(); recalculate(mode);
+}
+
+// ── statistics ──
+function recalculate(mode) {
+  if (!py) return;
+  const code = val(`${P[mode]}-species`);
+  if (mode === "lake") {
+    const s = py.lakeStats(code, num("l-ehours"), num("l-ghours"), num("l-thours"));
+    setVal("l-n", s.n); setVal("l-wr", fx(s.meanWr, 1));
+    for (const k of ["e", "g", "t"]) { setVal(`l-${k}cpue`, fx(s.cpue[k])); setVal(`l-${k}cpues`, fx(s.cpueStock[k])); }
+    setVal("l-psd", fx(s.psd, 1, "%")); setVal("l-rsdp", fx(s.rsdp, 1, "%"));
+    setVal("l-meanln", fx(s.meanLenIn, 2, " in")); setVal("l-meanwt", fx(s.meanWtLb, 3, " lb"));
+  } else {
+    const s = py.streamStats(code, num("s-stlen"), num("s-stwid"), num("s-mincut"), num("s-maxcut"));
+    const e = s.removal;
+    setVal("s-pass1", s.pass1); setVal("s-pass2", s.pass2);
+    setVal("s-capp", fx(e.p, 3)); setVal("s-popest", fx(e.N, 0));
+    setVal("s-ci95", e.ci == null ? "—" : `±${e.ci.toFixed(0)}  (${e.lcl.toFixed(0)}–${e.ucl.toFixed(0)})`);
+    setVal("s-numha", fx(s.perHa, 1)); setVal("s-kgha", fx(s.kgHa, 2));
+    setVal("s-numkm", fx(s.perKm, 1)); setVal("s-kgkm", fx(s.kgKm, 2));
+    setVal("s-wr", fx(s.meanWr, 1));
+    let note = "";
+    if (s.n && !e.valid) note = `No removal estimate: ${e.reason}.`;
+    else if (e.valid && !s.areaHa) note = "Enter station length and width for densities.";
+    else if (e.valid && s.meanWtG == null) note = "No weights for biomass (try Est. Weight).";
+    setVal("s-note", note);
+  }
+  updateCharts(mode, code);
+}
+
+// ── charts (Chart.js draws; Python bins and computes Wr) ──
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function initCharts() {
+  Object.values(charts).forEach(c => c.destroy());
+  const text = cssVar("--muted"), grid = cssVar("--grid");
+  const axis = t => ({ title: { display: true, text: t, color: text, font: { size: 11 } }, ticks: { color: text, font: { size: 10 } }, grid: { color: grid } });
+  const base = { plugins: { legend: { display: false } }, maintainAspectRatio: true, animation: { duration: 300 } };
+  for (const [p, lfColor, wrColor] of [["l", cssVar("--c2"), cssVar("--c3")], ["s", cssVar("--c1"), cssVar("--c3")]]) {
+    charts[`${p}-lf`] = new Chart($(`${p}-lf-chart`), {
+      type: "bar",
+      data: { labels: [], datasets: [{ data: [], backgroundColor: lfColor + "aa", borderColor: lfColor, borderWidth: 1 }] },
+      options: { ...base, scales: { x: axis("Length (mm)"), y: { ...axis("Count"), beginAtZero: true, ticks: { color: text, font: { size: 10 }, precision: 0 } } } },
+    });
+    charts[`${p}-wr`] = new Chart($(`${p}-wr-chart`), {
+      type: "scatter",
+      data: { datasets: [
+        { data: [], backgroundColor: wrColor + "99", borderColor: wrColor, pointRadius: 3 },
+        { data: [], type: "line", borderColor: text, borderDash: [4, 4], borderWidth: 1, pointRadius: 0 },
+      ] },
+      options: { ...base, scales: { x: { ...axis("Length (mm)"), type: "linear" }, y: { ...axis("Wr"), suggestedMin: 60, suggestedMax: 140 } } },
+    });
+  }
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { initCharts(); if (py) { recalculate("lake"); recalculate("stream"); } });
+function updateCharts(mode, code) {
+  const p = P[mode], cm = unitOf(mode) === "cm", f = cm ? 0.1 : 1, u = cm ? "cm" : "mm";
+  const r = py.charts(mode, code, 50, num("s-mincut"), num("s-maxcut"));
+  const lf = charts[`${p}-lf`], wr = charts[`${p}-wr`];
+  lf.data.labels = r.lf.edges.map(e => `${+(e * f).toFixed(1)}-${+((e + 50) * f).toFixed(1)}`);
+  lf.data.datasets[0].data = r.lf.counts;
+  lf.options.scales.x.title.text = `Length (${u})`;
+  lf.update();
+  const pts = r.wr.map(d => ({ x: d.x * f, y: d.y }));
+  const xs = pts.map(d => d.x), x0 = xs.length ? Math.min(...xs) : 0, x1 = xs.length ? Math.max(...xs) : 500 * f;
+  wr.data.datasets[0].data = pts;
+  wr.data.datasets[1].data = [{ x: x0, y: 100 }, { x: x1, y: 100 }];
+  wr.options.scales.x.title.text = `Length (${u})`;
+  wr.update();
+  const n = r.lf.counts.reduce((a, b) => a + b, 0);
+  setVal(`${p}-lf-title`, `Length Frequency — ${code} (${n})`);
+  setVal(`${p}-wr-title`, `Relative Weight (Wr) — ${code} (${pts.length})`);
+}
+
+// ── fish table ──
+function renderTable(mode) {
+  if (!py) return;
+  const p = P[mode], cm = unitOf(mode) === "cm";
+  $(`${p}-len-th`).textContent = `Length (${cm ? "cm" : "mm"})`;
+  const recs = py.records(mode);
+  if (selected[mode] != null && selected[mode] >= recs.length) selected[mode] = null;
+  $(`${p}-tbody`).innerHTML = recs.map((r, i) => `<tr class="${selected[mode] === i ? "selected" : ""}" data-i="${i}">
+      <td>${esc(r.species)}</td>
+      ${mode === "stream" ? `<td class="pass-${r.pass_num}">${r.pass_num}</td>` : ""}
+      <td>${r.count}</td>
+      <td>${r.length_mm ? (cm ? (r.length_mm / 10).toFixed(1) : r.length_mm.toFixed(0)) : ""}</td>
+      <td>${r.weight_g ? r.weight_g.toFixed(1) : ""}</td>
+      <td>${esc(r.status)}</td><td>${esc(r.mark)}</td><td>${esc(r.tag_id)}</td>
+    </tr>`).join("") || `<tr><td colspan="8" style="color:var(--dim);padding:16px;">No fish yet — click ＋ Add Fish (or Demo Data)</td></tr>`;
+  recalculate(mode);
+}
+for (const mode of ["lake", "stream"]) {
+  const tb = $(`${P[mode]}-tbody`);
+  tb.addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+    const i = +tr.dataset.i; selected[mode] = selected[mode] === i ? null : i;
+    tb.querySelectorAll("tr").forEach(r => r.classList.toggle("selected", +r.dataset.i === selected[mode]));
+  });
+  tb.addEventListener("dblclick", e => { const tr = e.target.closest("tr[data-i]"); if (tr) openEditFish(mode, +tr.dataset.i); });
+}
+function deleteSelectedRow(mode) {
+  if (!ready()) return;
+  if (selected[mode] == null) { toast("Select a row first", true); return; }
+  py.remove(mode, selected[mode]); selected[mode] = null;
+  renderTable(mode); toast("Row deleted");
+}
+function estimateWeights(mode) {
+  if (!ready()) return;
+  const n = py.estimateWeights(mode);
+  renderTable(mode); toast(`Estimated weight for ${n} record${n === 1 ? "" : "s"}`);
+}
+
+// ── add / edit fish dialog ──
+function fishFields() {
+  return { species: val("af-species"), count: val("af-count"), length: val("af-length"), weight: val("af-weight"),
+           status: val("af-status"), mark: val("af-mark"), tag_id: val("af-tagid"),
+           pass_num: document.querySelector('input[name="af-pass"]:checked').value };
+}
+function showFishDialog(mode, index, rec) {
+  fishDialog = { mode, index };
+  const unit = unitOf(mode), editing = index != null;
+  $("fish-title").textContent = editing ? "Edit Fish Record" : `Add Fish — ${mode === "lake" ? "Lake" : "Stream"} Survey`;
+  $("af-len-label").textContent = `Length (${unit})`;
+  document.querySelector(".af-pass-row").classList.toggle("hidden", mode !== "stream");
+  $("fish-footer-add").style.display = editing ? "none" : "";
+  $("fish-footer-edit").style.display = editing ? "" : "none";
+  $("af-hint").style.display = editing ? "none" : "";
+  $("af-species").value = rec.species;
+  $("af-count").value = rec.count;
+  $("af-length").value = rec.length_mm ? (unit === "cm" ? +(rec.length_mm / 10).toFixed(2) : rec.length_mm) : "";
+  $("af-weight").value = rec.weight_g || "";
+  $("af-status").value = rec.status; $("af-mark").value = rec.mark; $("af-tagid").value = rec.tag_id;
+  $(rec.pass_num === 2 ? "af-p2" : "af-p1").checked = true;
+  openModal("modal-fish");
+  $("af-length").focus();
+}
+function openAddFish(mode) {
+  if (!ready()) return;
+  showFishDialog(mode, null, { species: val(`${P[mode]}-species`), count: 1, length_mm: 0, weight_g: 0,
+                               status: "", mark: "", tag_id: "", pass_num: 1 });
+}
+function openEditFish(mode, i) {
+  if (!ready()) return;
+  showFishDialog(mode, i, py.records(mode)[i]);
+}
+function addFish(close) {
+  const { mode } = fishDialog;
+  const r = py.add(mode, fishFields(), unitOf(mode));
+  if (!r.ok) { toast(r.error, true); return; }
+  renderTable(mode);
+  const len = r.record.length_mm ? ` ${unitOf(mode) === "cm" ? (r.record.length_mm / 10).toFixed(1) + " cm" : r.record.length_mm.toFixed(0) + " mm"}` : "";
+  toast(`Added ${r.record.species}${len}`);
+  if (close) { closeModal("modal-fish"); return; }
+  ["af-length", "af-weight", "af-tagid"].forEach(id => $(id).value = "");
+  $("af-count").value = 1;
+  $("af-length").focus();
+}
+function saveEditFish() {
+  const { mode, index } = fishDialog;
+  const r = py.update(mode, index, fishFields(), unitOf(mode));
+  if (!r.ok) { toast(r.error, true); return; }
+  renderTable(mode); closeModal("modal-fish"); toast("Record updated");
+}
+$("modal-fish").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); fishDialog.index == null ? addFish(false) : saveEditFish(); }
+});
+
+// ── Level II ──
+function openLevelII(mode) {
+  if (!ready()) return;
+  if (!py.records(mode).length) { toast("No fish records to analyze", true); return; }
+  const tables = mode === "lake"
+    ? py.level2("lake", num("l-ehours"), num("l-ghours"), num("l-thours"))
+    : py.level2("stream", num("s-stlen"), num("s-stwid"), num("s-mincut"), num("s-maxcut"));
+  $("lii-title").textContent = mode === "lake" ? "Level II — Lake Survey" : "Level II — Stream Survey (2-Pass Removal)";
+  $("lii-content").innerHTML = tables.map(t => `
+    <p class="lii-section">${esc(t.title)}</p>
+    <div style="overflow-x:auto;max-height:300px;margin-bottom:10px;">
+      <table class="lii-table"><thead><tr>${t.headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+      <tbody>${t.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${t.headers.length}">No fish in range</td></tr>`}</tbody></table>
+    </div>`).join("");
+  $("modal-lii").dataset.mode = mode;
+  openModal("modal-lii");
+}
+function exportLevelII() {
+  const mode = $("modal-lii").dataset.mode;
+  download(`level_ii_${mode}.csv`, py.level2Csv(), "text/csv");
+  toast("Level II exported");
+}
+
+// ── species LUT ──
+function openLUT() {
+  if (!ready()) return;
+  lutDraft = py.lutGet();
+  renderLUTTable(); openModal("modal-lut");
+}
+function renderLUTTable() {
+  const col = (i, k, w, type = "number") =>
+    `<td><input ${type === "number" ? 'type="number" step="any"' : ""} value="${esc(lutDraft[i][k] || (type === "number" ? "" : lutDraft[i][k]))}"
+      ${w ? `style="width:${w}px"` : ""} onchange="lutDraft[${i}]['${k}']=this.value"></td>`;
+  $("lut-tbody").innerHTML = lutDraft.map((s, i) => `<tr>${col(i, "name", 0, "text")}${col(i, "code", 45, "text")}${col(i, "slope", 55)}${col(i, "intercept", 65)}
+    ${col(i, "stock", 50)}${col(i, "quality", 55)}${col(i, "preferred", 60)}${col(i, "memorable", 60)}${col(i, "trophy", 55)}</tr>`).join("");
+}
+function addLUTRow() {
+  lutDraft.push({ name: "", code: "", slope: 0, intercept: 0, stock: 0, quality: 0, preferred: 0, memorable: 0, trophy: 0 });
+  renderLUTTable();
+  const inputs = $("lut-tbody").querySelectorAll("tr:last-child input"); inputs[0].focus();
+}
+function applyLUT() {
+  populateSpecies(); renderTable("lake"); renderTable("stream");
+}
+function saveLUT() {
+  lutDraft = py.lutSet(lutDraft);
+  try { localStorage.setItem(LUT_KEY, JSON.stringify(lutDraft)); } catch { /* storage unavailable */ }
+  renderLUTTable(); applyLUT(); toast("LUT saved");
+}
+function resetLUT() {
+  if (!confirm("Reset the species LUT to the defaults?")) return;
+  lutDraft = py.lutReset();
+  try { localStorage.removeItem(LUT_KEY); } catch { /* storage unavailable */ }
+  renderLUTTable(); applyLUT(); toast("LUT reset to defaults");
+}
+
+// ── Chapman-Petersen ──
+function calcChapman() {
+  if (!ready()) return;
+  const r = py.chapman(num("chap-M"), num("chap-C"), num("chap-R"));
+  const ids = ["chap-N", "chap-Np", "chap-p", "chap-ci", "chap-lcl", "chap-ucl", "chap-var"];
+  if (!r.valid) { ids.forEach(id => setVal(id, "—")); toast(r.reason, true); return; }
+  setVal("chap-N", r.N.toFixed(1)); setVal("chap-Np", fx(r.petersen, 1));
+  setVal("chap-p", r.p.toFixed(4)); setVal("chap-ci", "±" + r.ci.toFixed(1));
+  setVal("chap-lcl", r.lcl.toFixed(1)); setVal("chap-ucl", r.ucl.toFixed(1)); setVal("chap-var", r.variance.toFixed(2));
+}
+
+// ── save / open / export ──
+function saveSurvey(mode) {
+  if (!ready()) return;
+  const r = py.save(mode, meta(mode));
+  download(r.name, r.text, "application/json"); toast("Survey saved");
+}
+function exportCSV(mode, kind) {
+  if (!ready()) return;
+  if (!py.records(mode).length) { toast("No records to export", true); return; }
+  const r = py.exportCsv(mode, kind, meta(mode));
+  download(r.name, r.text, "text/csv"); toast("CSV exported");
+}
+function showLoaded(r, label) {
+  if (!r.ok) { toast(r.error, true); return; }
+  for (const id of Object.values(META_IDS[r.mode])) if ($(id).type !== "date") $(id).value = $(id).defaultValue;
+  for (const [k, v] of Object.entries(r.meta)) if (META_IDS[r.mode][k]) $(META_IDS[r.mode][k]).value = v;
+  selected[r.mode] = null;
+  switchTab(r.mode); renderTable(r.mode);
+  toast(`Loaded ${label || r.meta.water || r.mode} — ${r.n} records`);
+}
+function loadSurveyFile() {
+  if (!ready()) return;
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".json,application/json";
+  input.onchange = () => { const f = input.files[0]; if (f) f.text().then(t => showLoaded(py.load(t))); };
+  input.click();
+}
+function loadDemo() {
+  if (!ready()) return;
+  if (py.records(currentTab).length && !confirm(`Replace the ${currentTab} survey's fish with demo data?`)) return;
+  showLoaded(py.sample(currentTab), "demo data");
+}
+
+// ── toast ──
+let toastTimer;
+function toast(msg, isError = false) {
+  const el = $("toast");
+  el.textContent = msg; el.className = "show" + (isError ? " error" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = "", 2500);
+}
+
+// ── global events ──
+document.querySelectorAll(".modal-overlay").forEach(o => o.addEventListener("click", e => { if (e.target === o) o.classList.remove("open"); }));
+document.addEventListener("keydown", e => { if (e.key === "Escape") document.querySelectorAll(".modal-overlay.open").forEach(m => m.classList.remove("open")); });
+
+// ── start-up ──
+(function init() {
+  const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  $("l-date").value = today; $("s-date").value = today;
+  initCharts();
+  function start() {
+    py = window.Jake;
+    try { const saved = localStorage.getItem(LUT_KEY); if (saved) py.lutSet(JSON.parse(saved)); } catch { /* ignore bad or blocked storage */ }
+    populateSpecies(); renderTable("lake"); renderTable("stream");
+    $("pyload").classList.add("hidden");
+  }
+  if (window.Jake) start(); else window.addEventListener("jake-ready", start, { once: true });
+})();
+</script>
+<script type="py" src="./main.py" config='{"files": {"./jakeomatic.py": "./jakeomatic.py"}}'></script>
+</body>
+</html>

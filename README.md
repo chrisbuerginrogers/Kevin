@@ -6,6 +6,7 @@ Browser tools for fisheries data, published with GitHub Pages.
 |---|---|---|
 | **StockDB** | https://chrisbuerginrogers.github.io/Kevin/StockDB/ | Look up historical fish stocking records by water name or code |
 | **WaTSS** | https://chrisbuerginrogers.github.io/Kevin/WaTSS/ | Summarize stream temperature logger data (MWAT, MWMT, M30AT, …) |
+| **JakeOmatic** | https://chrisbuerginrogers.github.io/Kevin/JakeOMatic/ | Enter and summarize lake and stream fish surveys (CPUE, PSD, Wr, removal estimates) |
 
 ## StockDB
 
@@ -63,13 +64,31 @@ cd WaTSS
 python3 -c "import watss; d = watss.parse(watss.sample_csv()); print(watss.compute_stats(d['t'], d['y'], 'F', d['dt'], d['t'][0], d['t'][-1])['metric'])"
 ```
 
+## JakeOmatic
+
+A fish survey data program, rewritten from JakeOmatic 3.0 as version 4.0. Like WaTSS, its calculations are in Python (`JakeOMatic/jakeomatic.py`) and run through PyScript, with `main.py` as the bridge and `index.html` as the interface only.
+
+- **Lake survey**: survey info, effort hours (electrofishing, gill net, trap net), and a fish table. Statistics per species: CPUE (all fish and stock length and up), PSD, RSD-P, mean length and weight, and mean relative weight (Wr). Length-frequency and Wr charts.
+- **Stream survey**: station length and width, a size filter, and two-pass fish records. Statistics: the Seber & Le Cren two-pass removal estimate with a 95% CI, then #/ha, kg/ha, #/km and kg/km.
+- **Level II** tables for each survey, which can be exported as CSV.
+- **Chapman-Petersen** mark-recapture calculator.
+- **Species LUT**: standard-weight equations and length categories. You can edit them, add species, and the changes are saved in your browser.
+- **Save / Open Survey** uses JSON files in the same layout as 3.0, so either version can open the other's files. **Export LF / Export Wr** produce CSV files. **Demo Data** loads a made-up survey.
+
+**Changes from 3.0:**
+- The fish **Count** field is now used. A row with count 5 counts as 5 fish everywhere.
+- The two-pass removal variance now uses Seber & Le Cren (1967). The 3.0 formula underestimated it.
+- Stream densities and biomass use the population estimate, and the size filter applies to all stream statistics.
+- The statistic labelled "RSD-Q" in 3.0 actually computed RSD-P, so it's now labelled RSD-P.
+- The charts show only the selected species.
+
 ## Running locally
 
 The pages load their data and Python files with `fetch`, so opening them directly from disk (`file://`) won't work. Serve the repository instead:
 
 ```bash
 python3 -m http.server 8000
-# then open http://localhost:8000/StockDB/ or http://localhost:8000/WaTSS/
+# then open http://localhost:8000/StockDB/, /WaTSS/ or /JakeOMatic/
 ```
 
 Pushing to `main` redeploys GitHub Pages within a minute or two.
