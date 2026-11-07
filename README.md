@@ -36,7 +36,7 @@ A browser version of WaTSS 3.0, built from the user manual (`WaTSS/WaTSSmanual3_
 - **Input**: a HOBOware `.csv` export, or a WaTSS `.txt` export (two header lines, then `reading #, date time, temperature`). The page reads the units from the file header when it can, and detects 12-hour and 24-hour clocks automatically. Files never leave the browser.
 - **Raw plot** (blue): cursor readout, zoom, pan, ◀ ▶ to step one reading at a time, and Reset.
 - **Filtered plot** (green): Filter (Raw Data or Daily Max), then Averaging (daily, weekly, monthly, or a running average over a chosen window). The yellow (left) and orange (right) sliders choose the period to summarize.
-- **Summary** (Metric or English, from the raw readings between the sliders):
+- **Summary** (English by default, or Metric, from the raw readings between the sliders):
   - AveTemp: mean of the raw readings.
   - DailyMax: the highest 2-hour running average (Colorado standard).
   - DegDays: the sum of daily means above freezing.

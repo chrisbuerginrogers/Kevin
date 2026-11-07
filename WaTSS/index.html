@@ -186,8 +186,8 @@
       <section class="card">
         <h2>Summary between sliders</h2>
         <div class="tabs" role="tablist">
-          <button role="tab" data-tab="metric" aria-pressed="true">Metric</button>
-          <button role="tab" data-tab="english" aria-pressed="false">English</button>
+          <button role="tab" data-tab="english" aria-pressed="true">English</button>
+          <button role="tab" data-tab="metric" aria-pressed="false">Metric</button>
         </div>
         <table class="stats" id="statsTable"><tbody><tr><td class="note">Load data to see results.</td></tr></tbody></table>
         <p class="note" id="statsNote"></p>
@@ -211,7 +211,7 @@
   let low = { t: [], y: [] };
   const view = { x0: 0, x1: 1 };
   const extent = { x0: 0, x1: 1 };
-  let cursorIdx = -1, tL = 0, tR = 0, mode = "cursor", tab = "metric";
+  let cursorIdx = -1, tL = 0, tR = 0, mode = "cursor", tab = "english";
 
   // ---------------- helpers ----------------
   const pad = n => String(n).padStart(2, "0");
